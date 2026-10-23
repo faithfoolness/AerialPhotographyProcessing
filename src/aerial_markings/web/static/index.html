@@ -25,7 +25,15 @@
   .drop.over { background: #e6e9f0; border-color: #a8b6d1; }
   .drop.ready { background: var(--ok); border-color: #a8c3b9; }
   .drop b { color: var(--accent); }
-  .files { margin-top: 8px; font-size: 12px; color: var(--muted); word-break: break-all; }
+  .files { margin-top: 10px; font-size: 12px; color: var(--muted); text-align: left; }
+  .files div { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; word-break: break-all; }
+  .files .warn { color: var(--err-ink); }
+  .clear { font-size: 12px; color: var(--muted); text-decoration: underline; cursor: pointer; background: none;
+           padding: 0; font-weight: 400; margin-top: 6px; }
+  .clear:hover { background: none; color: var(--ink); }
+  #perImage td { padding: 4px 0; vertical-align: top; border-top: 1px solid var(--line); }
+  #perImage td:first-child { word-break: break-all; padding-right: 8px; }
+  #perImage a { color: var(--accent); }
   label.field { display: block; font-size: 12px; color: var(--muted); }
   input[type=text] { width: 100%; margin-top: 4px; padding: 8px 10px; border: 1px solid var(--line);
                      border-radius: 6px; font: inherit; }
@@ -68,13 +76,14 @@
 
     <form id="form">
       <div class="drop" id="drop">
-        <div><b>Drop a .tif</b> (with .tfw / .prj if it has them)</div>
+        <div><b>Drop one or more .tif</b> (with .tfw / .prj if they have them)</div>
         <div class="sub">or click to choose files</div>
         <div class="files" id="fileList"></div>
         <input type="file" id="fileInput" multiple accept=".tif,.tiff,.tfw,.tifw,.prj" hidden>
       </div>
+      <button type="button" class="clear hidden" id="clearBtn">Clear selection</button>
       <div style="height:12px"></div>
-      <label class="field">CRS, only if the image has none
+      <label class="field">CRS, only for images that have none
         <input type="text" id="crs" placeholder="e.g. EPSG:32637">
       </label>
       <div style="height:10px"></div>
@@ -96,12 +105,17 @@
         <div class="meta" id="meta" style="margin-top:8px"></div>
       </div>
       <div style="height:12px"></div>
+      <div class="card" id="perImageCard">
+        <h2>Images</h2>
+        <table id="perImage"></table>
+      </div>
+      <div style="height:12px"></div>
       <div class="card layers">
         <h2>Layers</h2>
         <label><input type="checkbox" data-layer="solid" checked><span class="sw" style="background:var(--solid)"></span>Solid</label>
         <label><input type="checkbox" data-layer="dashed" checked><span class="sw" style="background:var(--dashed)"></span>Dashed</label>
         <label id="dashLayer"><input type="checkbox" data-layer="dash" checked><span class="sw" style="background:var(--dash)"></span>Single strokes</label>
-        <label><input type="checkbox" id="photoToggle" checked> Uploaded image</label>
+        <label><input type="checkbox" id="photoToggle" checked> Uploaded images</label>
         <input type="range" id="opacity" min="0" max="1" step="0.05" value="0.9" aria-label="Image opacity">
       </div>
       <div style="height:12px"></div>
@@ -124,18 +138,37 @@ const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
 L.control.layers({ 'Satellite': imagery, 'OpenStreetMap': osm }, null, { position: 'topright' }).addTo(map);
 
 const $ = id => document.getElementById(id);
-let files = [], photo = null, typeLayers = {};
+const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+let files = new Map(), photos = L.layerGroup(), typeLayers = {};
+
+const stem = n => n.replace(/\.[^.]+$/, '').toLowerCase();
+const isTif = n => /\.tiff?$/i.test(n);
 
 function pick(list) {
-  files = Array.from(list).filter(f => /\.(tif|tiff|tfw|tifw|prj)$/i.test(f.name));
-  const tifs = files.filter(f => /\.tiff?$/i.test(f.name));
-  $('fileList').textContent = files.map(f => f.name).join(', ');
-  $('drop').classList.toggle('ready', tifs.length === 1);
-  $('go').disabled = tifs.length !== 1;
-  if (tifs.length > 1) $('fileList').textContent = 'Choose a single .tif at a time';
+  for (const f of list) if (/\.(tif|tiff|tfw|tifw|prj)$/i.test(f.name)) files.set(f.name, f);
+  render();
+}
+function render() {
+  const all = [...files.values()];
+  const tifs = all.filter(f => isTif(f.name));
+  const side = all.filter(f => !isTif(f.name));
+  const rows = tifs.map(t => {
+    const mine = side.filter(c => stem(c.name) === stem(t.name) || tifs.length === 1);
+    const geo = mine.some(c => /\.(tfw|tifw)$/i.test(c.name)) ? '+ tfw' : '';
+    const prj = mine.some(c => /\.prj$/i.test(c.name)) ? '+ prj' : '';
+    return `<div><span>${esc(t.name)}</span><span>${[geo, prj].filter(Boolean).join(' ')}</span></div>`;
+  });
+  const orphans = tifs.length > 1 ? side.filter(c => !tifs.some(t => stem(t.name) === stem(c.name))) : [];
+  if (orphans.length) rows.push(`<div class="warn">No image for: ${orphans.map(o => esc(o.name)).join(', ')}</div>`);
+  $('fileList').innerHTML = rows.join('');
+  $('drop').classList.toggle('ready', tifs.length > 0);
+  $('go').disabled = tifs.length === 0;
+  $('go').textContent = tifs.length > 1 ? `Extract markings from ${tifs.length} images` : 'Extract markings';
+  $('clearBtn').classList.toggle('hidden', all.length === 0);
 }
 $('drop').onclick = () => $('fileInput').click();
-$('fileInput').onchange = e => pick(e.target.files);
+$('fileInput').onchange = e => { pick(e.target.files); e.target.value = ''; };
+$('clearBtn').onclick = () => { files.clear(); render(); };
 ['dragenter', 'dragover'].forEach(t => $('drop').addEventListener(t, e => { e.preventDefault(); $('drop').classList.add('over'); }));
 ['dragleave', 'drop'].forEach(t => $('drop').addEventListener(t, e => { e.preventDefault(); $('drop').classList.remove('over'); }));
 $('drop').addEventListener('drop', e => pick(e.dataTransfer.files));
@@ -170,35 +203,44 @@ async function poll(id) {
   const r = await fetch(`/api/jobs/${id}`);
   const job = await r.json();
   if (job.status === 'error') return fail(job.error);
-  setProgress(job.progress, job.message);
+  const n = job.images.length;
+  const prefix = n > 1 ? `Image ${Math.min(job.current + 1, n)} of ${n} · ` : '';
+  setProgress(job.progress, job.status === 'done' ? job.message : prefix + job.message);
   if (job.status !== 'done') return setTimeout(() => poll(id), 700);
   $('go').disabled = false;
   show(id, job);
 }
 
 async function show(id, job) {
-  const url = name => `/api/jobs/${id}/files/${encodeURIComponent(name)}`;
-  const [geo, prev] = await Promise.all([
+  const url = name => `/api/jobs/${id}/files/` + name.split('/').map(encodeURIComponent).join('/');
+  const done = job.images.filter(im => im.status === 'done');
+  const [geo, ...prevs] = await Promise.all([
     fetch(url(job.files.geojson)).then(r => r.json()),
-    fetch(url(job.files.preview_bounds)).then(r => r.json()),
+    ...done.map(im => fetch(url(im.files.preview_bounds)).then(r => r.json())),
   ]);
 
-  if (photo) map.removeLayer(photo);
+  photos.clearLayers();
   Object.values(typeLayers).forEach(l => map.removeLayer(l));
-  photo = L.imageOverlay(url(job.files.preview), prev.bounds, { opacity: +$('opacity').value }).addTo(map);
+  let bounds = null;
+  done.forEach((im, i) => {
+    photos.addLayer(L.imageOverlay(url(im.files.preview), prevs[i].bounds, { opacity: +$('opacity').value }));
+    const b = L.latLngBounds(prevs[i].bounds);
+    bounds = bounds ? bounds.extend(b) : b;
+  });
+  photos.addTo(map);
   typeLayers = {};
   for (const t of Object.keys(COLORS)) {
     typeLayers[t] = L.geoJSON(geo, {
       filter: f => f.properties.type === t,
       style: { color: COLORS[t], weight: t === 'dash' ? 3 : 2.5, opacity: .95 },
       onEachFeature: (f, l) => l.bindPopup(
-        `<b>${LABELS[f.properties.type]}</b>, ${f.properties.color}<br>Length: ${f.properties.length_m} m` +
-        `<br>Pieces: ${f.properties.pieces}<br>Width ≈ ${f.properties.width_m} m`)
+        `<b>${LABELS[f.properties.type]}</b>, ${esc(f.properties.color)}<br>Length: ${f.properties.length_m} m` +
+        `<br>Pieces: ${f.properties.pieces}<br>Width ≈ ${f.properties.width_m} m<br>Image: ${esc(f.properties.image)}`)
     }).addTo(map);
   }
   document.querySelectorAll('[data-layer]').forEach(cb => cb.checked = true);
   $('photoToggle').checked = true;
-  map.fitBounds(prev.bounds);
+  if (bounds) map.fitBounds(bounds);
 
   const s = job.stats;
   $('summary').innerHTML = Object.keys(COLORS).filter(t => t !== 'dash' || s.by_type.dash).map(t => {
@@ -206,8 +248,23 @@ async function show(id, job) {
     return `<tr><td><span class="sw" style="background:${COLORS[t]}"></span>${LABELS[t]}</td>` +
            `<td class="num">${v.count}</td><td class="num">${v.length_m.toLocaleString()} m</td></tr>`;
   }).join('');
-  $('meta').innerHTML = `${s.size_px[0]}×${s.size_px[1]} px · ${(s.gsd_m * 100).toFixed(1)} cm/px · ${s.crs}<br>` +
-    `Vehicles excluded: ${s.vehicles} · processed in ${s.total_s} s`;
+  const one = done.length === 1 ? done[0].stats : null;
+  $('meta').innerHTML = (one
+    ? `${one.size_px[0]}×${one.size_px[1]} px · ${(one.gsd_m * 100).toFixed(1)} cm/px · ${esc(one.crs)}<br>` +
+      `Vehicles excluded: ${one.vehicles} · processed in ${one.total_s} s`
+    : `${done.length} images · ${esc(s.crs)} · processed in ${s.total_s} s`);
+
+  $('perImageCard').classList.toggle('hidden', job.images.length < 2);
+  $('perImage').innerHTML = job.images.map(im => {
+    if (im.status !== 'done')
+      return `<tr><td>${esc(im.name)}</td><td colspan="2" style="color:var(--err-ink)">${esc(im.error || im.status)}</td></tr>`;
+    const st = im.stats;
+    const len = Object.values(st.by_type).reduce((a, v) => a + v.length_m, 0);
+    return `<tr><td>${esc(im.name)}<br><a href="${url(im.files.gpkg)}" download>GeoPackage</a></td>` +
+           `<td class="num">${st.lines} lines<br>${Math.round(len).toLocaleString()} m</td>` +
+           `<td class="num">${st.total_s} s</td></tr>`;
+  }).join('');
+
   const dl = [['gpkg', 'GeoPackage'], ['shp', 'Shapefile (zip)'], ['geojson', 'GeoJSON'], ['stats', 'Stats (json)']];
   $('downloads').innerHTML = dl.filter(([k]) => job.files[k])
     .map(([k, label]) => `<a class="btn" href="${url(job.files[k])}" download>${label}</a>`).join('');
@@ -219,8 +276,8 @@ document.querySelectorAll('[data-layer]').forEach(cb => cb.onchange = () => {
   const l = typeLayers[cb.dataset.layer]; if (!l) return;
   cb.checked ? l.addTo(map) : map.removeLayer(l);
 });
-$('photoToggle').onchange = e => photo && (e.target.checked ? photo.addTo(map) : map.removeLayer(photo));
-$('opacity').oninput = e => photo && photo.setOpacity(+e.target.value);
+$('photoToggle').onchange = e => e.target.checked ? photos.addTo(map) : map.removeLayer(photos);
+$('opacity').oninput = e => photos.eachLayer(l => l.setOpacity(+e.target.value));
 </script>
 </body>
 </html>

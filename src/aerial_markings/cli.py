@@ -16,11 +16,12 @@ from pathlib import Path
 
 def _extract(args) -> None:
     from .config import Params
-    from .export import write_outputs
+    from .export import write_combined, write_outputs
     from .pipeline import run
 
     params = Params()
     params.vehicles.enabled = not args.no_vehicles
+    done = []
     for image in args.images:
         out = Path(args.output) / Path(image).stem if len(args.images) > 1 else Path(args.output)
         result = run(image, params, crs=args.crs)
@@ -30,6 +31,11 @@ def _extract(args) -> None:
         for t, v in s["by_type"].items():
             print(f"  {t:7s} {v['count']:4d} lines  {v['length_m']:9.1f} m")
         print("  files: " + ", ".join(files.values()))
+        done.append((Path(image).stem, result.markings, result.stats))
+        del result                                   # free the image before the next one
+    if len(done) > 1:
+        files, stats = write_combined(done, Path(args.output), formats=args.formats.split(","))
+        print(f"All {stats['images']} images: {stats['lines']} lines -> {args.output}: " + ", ".join(files.values()))
 
 
 def _serve(args) -> None:

@@ -14,7 +14,8 @@ hundreds of kilometres of highway and digitising them by hand takes days.
 - **Input:** an RGB orthophoto, either a GeoTIFF or a plain TIFF with a world file (`.tfw`) and optional `.prj`.
 - **Output:** a GeoPackage with the layers `markings`, `segments` and `vehicles`, a zipped Shapefile and GeoJSON.
 - **Attributes of every line:** type (`solid` or `dashed`), paint colour (`white` or `yellow`), length in metres, number of joined pieces, mean paint width.
-- **Interfaces:** a command-line tool for batch processing and a web page where you upload an image and inspect the result on a satellite map.
+- **Batches:** several orthophotos at once. Each image gets its own results, and all lines are also merged into one layer with an `image` column.
+- **Interfaces:** a command-line tool and a web page where you drop one or more images and inspect the lines on a satellite map.
 
 ## How it works
 
@@ -77,9 +78,11 @@ aerial-markings serve            # then open http://127.0.0.1:8000
 Your own imagery:
 
 ```bash
-aerial-markings extract photos/*.tif -o results/
+aerial-markings extract photos/*.tif -o results/    # results/<image>/... plus results/all_markings.*
 aerial-markings extract tile.tif --crs EPSG:32637   # if the image carries no CRS
 ```
+
+In the web interface, drop several `.tif` files together with their `.tfw` / `.prj`; companions are matched to images by file name. Images are processed one after another, and a failure in one does not stop the rest.
 
 The YOLO weights (`yolo11n-obb.pt`, 5.5 MB) download automatically on first run.
 
