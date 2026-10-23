@@ -1,0 +1,22 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.idea/
+.vscode/
+.pytest_cache/
+
+# model weights are downloaded automatically
+*.pt
+*.weights
+
+# data and results
+data/
+runs/
+results/
+uploads/
+output/
+*.tif
+*.tiff
+*.tfw

@@ -1,0 +1,13 @@
+# Same as `pip install -e .[vehicles]`
+numpy>=1.26
+opencv-python-headless>=4.9
+scikit-image>=0.22
+scipy>=1.11
+rasterio>=1.3
+pyproj>=3.6
+shapely>=2.0
+geopandas>=0.14
+fastapi>=0.110
+python-multipart>=0.0.9
+uvicorn>=0.29
+ultralytics>=8.3

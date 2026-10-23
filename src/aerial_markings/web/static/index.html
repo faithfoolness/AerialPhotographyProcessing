@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aerial Road Markings</title>
+<link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css">
+<style>
+  :root {
+    --bg: #f9f7f7; --panel: #ffffff; --ink: #3f4a4b; --muted: #7b8b8c;
+    --accent: #6b8c8d; --btn: #88b2cc; --btn-hover: #76a1bb; --line: #dfe7ec;
+    --soft: #f0f4f8; --ok: #e0ebe5; --err: #f8e8e8; --err-ink: #b55b5b;
+    --solid: #ff4d4f; --dashed: #ffc53d; --dash: #40a9ff; --veh: #b37feb;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+         color: var(--ink); background: var(--bg); }
+  .app { display: grid; grid-template-columns: 340px 1fr; height: 100vh; }
+  aside { background: var(--panel); border-right: 1px solid var(--line); padding: 20px;
+          overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+  h1 { margin: 0; font-size: 18px; color: var(--accent); }
+  .sub { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+  .drop { border: 2px dashed #c3cfe2; border-radius: 12px; background: var(--soft);
+          padding: 22px 14px; text-align: center; cursor: pointer; transition: .2s; }
+  .drop.over { background: #e6e9f0; border-color: #a8b6d1; }
+  .drop.ready { background: var(--ok); border-color: #a8c3b9; }
+  .drop b { color: var(--accent); }
+  .files { margin-top: 8px; font-size: 12px; color: var(--muted); word-break: break-all; }
+  label.field { display: block; font-size: 12px; color: var(--muted); }
+  input[type=text] { width: 100%; margin-top: 4px; padding: 8px 10px; border: 1px solid var(--line);
+                     border-radius: 6px; font: inherit; }
+  .check { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+  button, .btn { appearance: none; border: 0; border-radius: 6px; padding: 10px 14px; cursor: pointer;
+           background: var(--btn); color: #fff; font: inherit; font-weight: 600; text-decoration: none;
+           text-align: center; transition: background .2s; }
+  button:hover, .btn:hover { background: var(--btn-hover); }
+  button:disabled { background: #c9d3d8; cursor: default; }
+  .progress { height: 8px; background: var(--soft); border-radius: 4px; overflow: hidden; }
+  .progress > div { height: 100%; width: 0; background: var(--btn); transition: width .3s; }
+  .status { font-size: 13px; color: var(--muted); margin-top: 6px; }
+  .error { background: var(--err); color: var(--err-ink); padding: 10px; border-radius: 6px; font-size: 13px; }
+  .card { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .card h2 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  td { padding: 3px 0; } td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .sw { display: inline-block; width: 18px; height: 4px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+  .downloads { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .downloads .btn { padding: 8px; font-size: 13px; background: #d4e3e3; color: var(--ink); font-weight: 500; }
+  .downloads .btn:hover { background: #c3d9e8; }
+  .meta { font-size: 12px; color: var(--muted); }
+  #map { height: 100%; }
+  .hidden { display: none !important; }
+  .layers label { display: flex; align-items: center; gap: 6px; font-size: 13px; margin: 3px 0; }
+  input[type=range] { width: 100%; }
+  @media (max-width: 760px) {
+    .app { grid-template-columns: 1fr; grid-template-rows: auto 70vh; height: auto; }
+    aside { border-right: 0; border-bottom: 1px solid var(--line); }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <div>
+      <h1>Aerial Road Markings</h1>
+      <p class="sub">GeoTIFF orthophoto → vector road markings</p>
+    </div>
+
+    <form id="form">
+      <div class="drop" id="drop">
+        <div><b>Drop a .tif</b> (with .tfw / .prj if it has them)</div>
+        <div class="sub">or click to choose files</div>
+        <div class="files" id="fileList"></div>
+        <input type="file" id="fileInput" multiple accept=".tif,.tiff,.tfw,.tifw,.prj" hidden>
+      </div>
+      <div style="height:12px"></div>
+      <label class="field">CRS, only if the image has none
+        <input type="text" id="crs" placeholder="e.g. EPSG:32637">
+      </label>
+      <div style="height:10px"></div>
+      <label class="check"><input type="checkbox" id="vehicles" checked> Exclude vehicles (YOLO-OBB)</label>
+      <div style="height:14px"></div>
+      <button type="submit" id="go" disabled style="width:100%">Extract markings</button>
+    </form>
+
+    <div id="progressBox" class="hidden">
+      <div class="progress"><div id="bar"></div></div>
+      <div class="status" id="status"></div>
+    </div>
+    <div id="errorBox" class="error hidden"></div>
+
+    <div id="results" class="hidden">
+      <div class="card">
+        <h2>Result</h2>
+        <table id="summary"></table>
+        <div class="meta" id="meta" style="margin-top:8px"></div>
+      </div>
+      <div style="height:12px"></div>
+      <div class="card layers">
+        <h2>Layers</h2>
+        <label><input type="checkbox" data-layer="solid" checked><span class="sw" style="background:var(--solid)"></span>Solid</label>
+        <label><input type="checkbox" data-layer="dashed" checked><span class="sw" style="background:var(--dashed)"></span>Dashed</label>
+        <label><input type="checkbox" data-layer="dash" checked><span class="sw" style="background:var(--dash)"></span>Single strokes</label>
+        <label><input type="checkbox" id="photoToggle" checked> Uploaded image</label>
+        <input type="range" id="opacity" min="0" max="1" step="0.05" value="0.9" aria-label="Image opacity">
+      </div>
+      <div style="height:12px"></div>
+      <div class="downloads" id="downloads"></div>
+    </div>
+  </aside>
+  <div id="map"></div>
+</div>
+
+<script src="/static/vendor/leaflet/leaflet.js"></script>
+<script>
+const COLORS = { solid: '#ff4d4f', dashed: '#ffc53d', dash: '#40a9ff' };
+const LABELS = { solid: 'Solid', dashed: 'Dashed', dash: 'Single strokes' };
+
+const map = L.map('map', { zoomControl: true }).setView([55.75, 37.62], 5);
+const imagery = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+  { maxZoom: 22, maxNativeZoom: 19, attribution: 'Imagery © Esri' }).addTo(map);
+const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  { maxZoom: 22, maxNativeZoom: 19, attribution: '© OpenStreetMap contributors' });
+L.control.layers({ 'Satellite': imagery, 'OpenStreetMap': osm }, null, { position: 'topright' }).addTo(map);
+
+const $ = id => document.getElementById(id);
+let files = [], photo = null, typeLayers = {};
+
+function pick(list) {
+  files = Array.from(list).filter(f => /\.(tif|tiff|tfw|tifw|prj)$/i.test(f.name));
+  const tifs = files.filter(f => /\.tiff?$/i.test(f.name));
+  $('fileList').textContent = files.map(f => f.name).join(', ');
+  $('drop').classList.toggle('ready', tifs.length === 1);
+  $('go').disabled = tifs.length !== 1;
+  if (tifs.length > 1) $('fileList').textContent = 'Choose a single .tif at a time';
+}
+$('drop').onclick = () => $('fileInput').click();
+$('fileInput').onchange = e => pick(e.target.files);
+['dragenter', 'dragover'].forEach(t => $('drop').addEventListener(t, e => { e.preventDefault(); $('drop').classList.add('over'); }));
+['dragleave', 'drop'].forEach(t => $('drop').addEventListener(t, e => { e.preventDefault(); $('drop').classList.remove('over'); }));
+$('drop').addEventListener('drop', e => pick(e.dataTransfer.files));
+
+$('form').onsubmit = async e => {
+  e.preventDefault();
+  const fd = new FormData();
+  files.forEach(f => fd.append('files', f));
+  fd.append('crs', $('crs').value);
+  fd.append('vehicles', $('vehicles').checked);
+  $('go').disabled = true;
+  $('errorBox').classList.add('hidden');
+  $('results').classList.add('hidden');
+  $('progressBox').classList.remove('hidden');
+  setProgress(0, 'Uploading…');
+  try {
+    const r = await fetch('/api/jobs', { method: 'POST', body: fd });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || 'Upload failed');
+    poll(data.id);
+  } catch (err) { fail(err.message); }
+};
+
+function setProgress(f, msg) { $('bar').style.width = (f * 100) + '%'; $('status').textContent = msg; }
+function fail(msg) {
+  $('progressBox').classList.add('hidden');
+  $('errorBox').textContent = msg; $('errorBox').classList.remove('hidden');
+  $('go').disabled = false;
+}
+
+async function poll(id) {
+  const r = await fetch(`/api/jobs/${id}`);
+  const job = await r.json();
+  if (job.status === 'error') return fail(job.error);
+  setProgress(job.progress, job.message);
+  if (job.status !== 'done') return setTimeout(() => poll(id), 700);
+  $('go').disabled = false;
+  show(id, job);
+}
+
+async function show(id, job) {
+  const url = name => `/api/jobs/${id}/files/${encodeURIComponent(name)}`;
+  const [geo, prev] = await Promise.all([
+    fetch(url(job.files.geojson)).then(r => r.json()),
+    fetch(url(job.files.preview_bounds)).then(r => r.json()),
+  ]);
+
+  if (photo) map.removeLayer(photo);
+  Object.values(typeLayers).forEach(l => map.removeLayer(l));
+  photo = L.imageOverlay(url(job.files.preview), prev.bounds, { opacity: +$('opacity').value }).addTo(map);
+  typeLayers = {};
+  for (const t of Object.keys(COLORS)) {
+    typeLayers[t] = L.geoJSON(geo, {
+      filter: f => f.properties.type === t,
+      style: { color: COLORS[t], weight: t === 'dash' ? 3 : 2.5, opacity: .95 },
+      onEachFeature: (f, l) => l.bindPopup(
+        `<b>${LABELS[f.properties.type]}</b><br>Length: ${f.properties.length_m} m` +
+        `<br>Pieces: ${f.properties.pieces}<br>Width ≈ ${f.properties.width_m} m`)
+    }).addTo(map);
+  }
+  document.querySelectorAll('[data-layer]').forEach(cb => cb.checked = true);
+  $('photoToggle').checked = true;
+  map.fitBounds(prev.bounds);
+
+  const s = job.stats;
+  $('summary').innerHTML = Object.keys(COLORS).map(t => {
+    const v = s.by_type[t] || { count: 0, length_m: 0 };
+    return `<tr><td><span class="sw" style="background:${COLORS[t]}"></span>${LABELS[t]}</td>` +
+           `<td class="num">${v.count}</td><td class="num">${v.length_m.toLocaleString()} m</td></tr>`;
+  }).join('');
+  $('meta').innerHTML = `${s.size_px[0]}×${s.size_px[1]} px · ${(s.gsd_m * 100).toFixed(1)} cm/px · ${s.crs}<br>` +
+    `Vehicles excluded: ${s.vehicles} · processed in ${s.total_s} s`;
+  const dl = [['gpkg', 'GeoPackage'], ['shp', 'Shapefile (zip)'], ['geojson', 'GeoJSON'], ['stats', 'Stats (json)']];
+  $('downloads').innerHTML = dl.filter(([k]) => job.files[k])
+    .map(([k, label]) => `<a class="btn" href="${url(job.files[k])}" download>${label}</a>`).join('');
+  $('results').classList.remove('hidden');
+}
+
+document.querySelectorAll('[data-layer]').forEach(cb => cb.onchange = () => {
+  const l = typeLayers[cb.dataset.layer]; if (!l) return;
+  cb.checked ? l.addTo(map) : map.removeLayer(l);
+});
+$('photoToggle').onchange = e => photo && (e.target.checked ? photo.addTo(map) : map.removeLayer(photo));
+$('opacity').oninput = e => photo && photo.setOpacity(+e.target.value);
+</script>
+</body>
+</html>

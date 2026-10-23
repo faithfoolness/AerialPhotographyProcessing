@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aerial-markings"
+version = "1.0.0"
+description = "Extract road markings from aerial orthophotos into GIS vector layers"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Vera Kaneva" }]
+keywords = ["gis", "remote sensing", "road markings", "orthophoto", "geotiff", "yolo"]
+dependencies = [
+    "numpy>=1.26",
+    "opencv-python-headless>=4.9",
+    "scikit-image>=0.22",
+    "scipy>=1.11",
+    "rasterio>=1.3",
+    "pyproj>=3.6",
+    "shapely>=2.0",
+    "geopandas>=0.14",
+    "fastapi>=0.110",
+    "python-multipart>=0.0.9",
+    "uvicorn>=0.29",
+]
+
+[project.optional-dependencies]
+vehicles = ["ultralytics>=8.3"]
+dev = ["pytest>=8", "httpx>=0.27"]
+
+[project.scripts]
+aerial-markings = "aerial_markings.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+aerial_markings = ["web/static/*", "web/static/vendor/leaflet/*", "web/static/vendor/leaflet/images/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
