@@ -3,63 +3,99 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Aerial Road Markings</title>
+<title>Road Markings</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%235f8fa8'/%3E%3Cpath d='M11 6 7 26M21 6l4 20' stroke='%23fff' stroke-width='2.4' stroke-linecap='round'/%3E%3Cpath d='M16 7v4m0 5v4m0 5v1' stroke='%23ffd166' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css">
 <style>
   :root {
-    --bg: #f9f7f7; --panel: #ffffff; --ink: #3f4a4b; --muted: #7b8b8c;
-    --accent: #6b8c8d; --btn: #88b2cc; --btn-hover: #76a1bb; --line: #dfe7ec;
-    --soft: #f0f4f8; --ok: #e0ebe5; --err: #f8e8e8; --err-ink: #b55b5b;
-    --solid: #ff4d4f; --dashed: #ffc53d; --dash: #40a9ff; --veh: #b37feb;
+    --bg: #f6f7f8; --panel: #ffffff; --ink: #24303a; --muted: #7a8790; --faint: #a9b3ba;
+    --line: #e7ebee; --soft: #f3f6f8; --accent: #5f8fa8; --accent-ink: #4a7891;
+    --ok: #eaf3ee; --ok-line: #b9d6c4; --err: #fbeeee; --err-ink: #b0504f;
+    --solid: #ff4d5e; --dashed: #ffb020;
+    --radius: 12px;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
-         color: var(--ink); background: var(--bg); }
-  .app { display: grid; grid-template-columns: 340px 1fr; height: 100vh; }
-  aside { background: var(--panel); border-right: 1px solid var(--line); padding: 20px;
-          overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
-  h1 { margin: 0; font-size: 18px; color: var(--accent); }
-  .sub { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
-  .drop { border: 2px dashed #c3cfe2; border-radius: 12px; background: var(--soft);
-          padding: 22px 14px; text-align: center; cursor: pointer; transition: .2s; }
-  .drop.over { background: #e6e9f0; border-color: #a8b6d1; }
-  .drop.ready { background: var(--ok); border-color: #a8c3b9; }
-  .drop b { color: var(--accent); }
-  .files { margin-top: 10px; font-size: 12px; color: var(--muted); text-align: left; }
-  .files div { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; word-break: break-all; }
-  .files .warn { color: var(--err-ink); }
-  .clear { font-size: 12px; color: var(--muted); text-decoration: underline; cursor: pointer; background: none;
-           padding: 0; font-weight: 400; margin-top: 6px; }
-  .clear:hover { background: none; color: var(--ink); }
-  #perImage td { padding: 4px 0; vertical-align: top; border-top: 1px solid var(--line); }
-  #perImage td:first-child { word-break: break-all; padding-right: 8px; }
-  #perImage a { color: var(--accent); }
-  label.field { display: block; font-size: 12px; color: var(--muted); }
-  input[type=text] { width: 100%; margin-top: 4px; padding: 8px 10px; border: 1px solid var(--line);
-                     border-radius: 6px; font: inherit; }
+  body { margin: 0; font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+         color: var(--ink); background: var(--bg); -webkit-font-smoothing: antialiased; }
+  .app { display: grid; grid-template-columns: 360px 1fr; height: 100vh; }
+  aside { background: var(--panel); border-right: 1px solid var(--line); padding: 24px 22px;
+          overflow-y: auto; display: flex; flex-direction: column; gap: 18px; }
+  header { display: flex; align-items: center; gap: 10px; }
+  header img { width: 28px; height: 28px; }
+  h1 { margin: 0; font-size: 17px; font-weight: 650; letter-spacing: -.01em; }
+
+  .drop { border: 1.5px dashed #c9d4dc; border-radius: var(--radius); background: var(--soft);
+          padding: 26px 16px 20px; text-align: center; cursor: pointer; transition: background .15s, border-color .15s; }
+  .drop:hover, .drop.over { background: #ebf1f5; border-color: var(--accent); }
+  .drop svg { color: var(--accent); }
+  .drop-title { margin: 8px 0 2px; font-weight: 600; }
+  .drop-hint { margin: 0; color: var(--muted); font-size: 13px; }
+  .pick { margin-top: 12px; display: flex; justify-content: center; gap: 6px; color: var(--faint); }
+  .link { appearance: none; border: 0; background: none; padding: 0; font: inherit; font-size: 13px;
+          color: var(--accent-ink); cursor: pointer; font-weight: 500; }
+  .link:hover { text-decoration: underline; }
+
+  .filelist { list-style: none; margin: 8px 0 0; padding: 0; max-height: 210px; overflow-y: auto; }
+  .filelist li { display: flex; align-items: center; gap: 8px; padding: 7px 2px; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .filelist li:last-child { border-bottom: 0; }
+  .filelist .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tag { font-size: 11px; color: var(--muted); background: var(--soft); border-radius: 4px; padding: 1px 6px; }
+  .tag.missing { color: var(--err-ink); background: var(--err); }
+  .remove { appearance: none; border: 0; background: none; color: var(--faint); cursor: pointer; font-size: 16px; line-height: 1; padding: 0 2px; }
+  .remove:hover { color: var(--ink); }
+  .note { font-size: 12px; color: var(--err-ink); margin: 6px 0 0; }
+
+  details.settings summary { cursor: pointer; color: var(--muted); font-size: 13px; list-style: none; user-select: none; }
+  details.settings summary::-webkit-details-marker { display: none; }
+  details.settings summary::before { content: "›"; display: inline-block; width: 12px; transition: transform .15s; }
+  details.settings[open] summary::before { transform: rotate(90deg); }
+  .settings-body { padding: 10px 0 2px 12px; display: grid; gap: 12px; }
+  .field { font-size: 12px; color: var(--muted); }
+  .field input { display: block; width: 100%; margin-top: 4px; padding: 8px 10px; border: 1px solid var(--line);
+                 border-radius: 8px; font: inherit; font-size: 13px; color: var(--ink); }
+  .field input:focus { outline: 2px solid #cfe0ea; border-color: var(--accent); }
   .check { display: flex; gap: 8px; align-items: center; font-size: 13px; }
-  button, .btn { appearance: none; border: 0; border-radius: 6px; padding: 10px 14px; cursor: pointer;
-           background: var(--btn); color: #fff; font: inherit; font-weight: 600; text-decoration: none;
-           text-align: center; transition: background .2s; }
-  button:hover, .btn:hover { background: var(--btn-hover); }
-  button:disabled { background: #c9d3d8; cursor: default; }
-  .progress { height: 8px; background: var(--soft); border-radius: 4px; overflow: hidden; }
-  .progress > div { height: 100%; width: 0; background: var(--btn); transition: width .3s; }
-  .status { font-size: 13px; color: var(--muted); margin-top: 6px; }
-  .error { background: var(--err); color: var(--err-ink); padding: 10px; border-radius: 6px; font-size: 13px; }
-  .card { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
-  .card h2 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  td { padding: 3px 0; } td.num { text-align: right; font-variant-numeric: tabular-nums; }
-  .sw { display: inline-block; width: 18px; height: 4px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
-  .downloads { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .downloads .btn { padding: 8px; font-size: 13px; background: #d4e3e3; color: var(--ink); font-weight: 500; }
-  .downloads .btn:hover { background: #c3d9e8; }
-  .meta { font-size: 12px; color: var(--muted); }
-  #map { height: 100%; }
+
+  .primary { appearance: none; border: 0; border-radius: 10px; padding: 12px 16px; width: 100%; cursor: pointer;
+             background: var(--accent); color: #fff; font: inherit; font-weight: 600; transition: background .15s;
+             text-decoration: none; display: block; text-align: center; }
+  .primary:hover { background: var(--accent-ink); }
+  .primary:disabled { background: #cfd8de; cursor: default; }
+
+  .progress { height: 4px; background: var(--soft); border-radius: 2px; overflow: hidden; }
+  .progress > div { height: 100%; width: 0; background: var(--accent); transition: width .4s; }
+  .status { font-size: 13px; color: var(--muted); margin-top: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .error { background: var(--err); color: var(--err-ink); padding: 10px 12px; border-radius: 10px; font-size: 13px; }
+
+  .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .tile { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
+  .tile b { display: block; font-size: 22px; font-weight: 650; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .tile span { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .meta { font-size: 12px; color: var(--muted); margin: 8px 2px 0; }
+  .more { display: flex; justify-content: center; gap: 6px; color: var(--faint); margin-top: 8px; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 999px;
+          padding: 5px 11px; font-size: 13px; cursor: pointer; user-select: none; background: var(--panel); }
+  .chip input { display: none; }
+  .chip:has(input:not(:checked)) { color: var(--faint); background: var(--soft); }
+  .chip:has(input:not(:checked)) .dot { opacity: .35; }
+
+  details.images summary { cursor: pointer; color: var(--muted); font-size: 13px; list-style: none; }
+  details.images summary::-webkit-details-marker { display: none; }
+  details.images summary::before { content: "›"; display: inline-block; width: 12px; transition: transform .15s; }
+  details.images[open] summary::before { transform: rotate(90deg); }
+  .images ul { list-style: none; margin: 8px 0 0; padding: 0; }
+  .images li { display: flex; gap: 8px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .images li:last-child { border-bottom: 0; }
+  .images .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .images .num { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .images .failed { color: var(--err-ink); }
+
+  #map { height: 100%; background: #e9edf0; }
+  .leaflet-popup-content { font-size: 13px; line-height: 1.5; }
   .hidden { display: none !important; }
-  .layers label { display: flex; align-items: center; gap: 6px; font-size: 13px; margin: 3px 0; }
-  input[type=range] { width: 100%; }
   @media (max-width: 760px) {
     .app { grid-template-columns: 1fr; grid-template-rows: auto 70vh; height: auto; }
     aside { border-right: 0; border-bottom: 1px solid var(--line); }
@@ -69,27 +105,38 @@
 <body>
 <div class="app">
   <aside>
-    <div>
-      <h1>Aerial Road Markings</h1>
-      <p class="sub">GeoTIFF orthophoto → vector road markings</p>
-    </div>
+    <header>
+      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%235f8fa8'/%3E%3Cpath d='M11 6 7 26M21 6l4 20' stroke='%23fff' stroke-width='2.4' stroke-linecap='round'/%3E%3Cpath d='M16 7v4m0 5v4m0 5v1' stroke='%23ffd166' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E" alt="">
+      <h1>Road Markings</h1>
+    </header>
 
     <form id="form">
       <div class="drop" id="drop">
-        <div><b>Drop one or more .tif</b> (with .tfw / .prj if they have them)</div>
-        <div class="sub">or click to choose files</div>
-        <div class="files" id="fileList"></div>
-        <input type="file" id="fileInput" multiple accept=".tif,.tiff,.tfw,.tifw,.prj" hidden>
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4m0 0-4 4m4-4 4 4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+        <p class="drop-title">Drop orthophotos or a folder</p>
+        <p class="drop-hint">GeoTIFF, with .tfw / .prj if they have them</p>
+        <div class="pick">
+          <button type="button" class="link" id="pickFiles">Choose files</button>·<button type="button" class="link" id="pickFolder">Choose folder</button>
+        </div>
       </div>
-      <button type="button" class="clear hidden" id="clearBtn">Clear selection</button>
-      <div style="height:12px"></div>
-      <label class="field">CRS, only for images that have none
-        <input type="text" id="crs" placeholder="e.g. EPSG:32637">
-      </label>
-      <div style="height:10px"></div>
-      <label class="check"><input type="checkbox" id="vehicles" checked> Exclude vehicles (YOLO-OBB)</label>
+      <input type="file" id="fileInput" multiple accept=".tif,.tiff,.tfw,.tifw,.prj" hidden>
+      <input type="file" id="folderInput" webkitdirectory multiple hidden>
+
+      <ul class="filelist" id="fileList"></ul>
+      <p class="note hidden" id="orphans"></p>
+
       <div style="height:14px"></div>
-      <button type="submit" id="go" disabled style="width:100%">Extract markings</button>
+      <details class="settings">
+        <summary>Settings</summary>
+        <div class="settings-body">
+          <label class="field">Coordinate system for images without one
+            <input type="text" id="crs" placeholder="e.g. EPSG:32637" autocomplete="off">
+          </label>
+          <label class="check"><input type="checkbox" id="vehicles" checked> Ignore cars and trucks</label>
+        </div>
+      </details>
+      <div style="height:14px"></div>
+      <button type="submit" class="primary" id="go" disabled>Extract markings</button>
     </form>
 
     <div id="progressBox" class="hidden">
@@ -98,82 +145,117 @@
     </div>
     <div id="errorBox" class="error hidden"></div>
 
-    <div id="results" class="hidden">
-      <div class="card">
-        <h2>Result</h2>
-        <table id="summary"></table>
-        <div class="meta" id="meta" style="margin-top:8px"></div>
+    <section id="results" class="hidden">
+      <div class="tiles">
+        <div class="tile"><b id="solidLen">0</b><span><i class="dot" style="background:var(--solid)"></i><span id="solidCount">Solid</span></span></div>
+        <div class="tile"><b id="dashedLen">0</b><span><i class="dot" style="background:var(--dashed)"></i><span id="dashedCount">Dashed</span></span></div>
       </div>
-      <div style="height:12px"></div>
-      <div class="card" id="perImageCard">
-        <h2>Images</h2>
-        <table id="perImage"></table>
+      <p class="meta" id="meta"></p>
+
+      <div style="height:14px"></div>
+      <a class="primary" id="dlMain" download>Download GeoPackage</a>
+      <div class="more" id="dlMore"></div>
+
+      <div style="height:18px"></div>
+      <div class="chips">
+        <label class="chip"><input type="checkbox" data-layer="solid" checked><i class="dot" style="background:var(--solid)"></i>Solid</label>
+        <label class="chip"><input type="checkbox" data-layer="dashed" checked><i class="dot" style="background:var(--dashed)"></i>Dashed</label>
+        <label class="chip"><input type="checkbox" id="photoToggle" checked><i class="dot" style="background:#9aa7b0"></i>Photo</label>
       </div>
-      <div style="height:12px"></div>
-      <div class="card layers">
-        <h2>Layers</h2>
-        <label><input type="checkbox" data-layer="solid" checked><span class="sw" style="background:var(--solid)"></span>Solid</label>
-        <label><input type="checkbox" data-layer="dashed" checked><span class="sw" style="background:var(--dashed)"></span>Dashed</label>
-        <label id="dashLayer"><input type="checkbox" data-layer="dash" checked><span class="sw" style="background:var(--dash)"></span>Single strokes</label>
-        <label><input type="checkbox" id="photoToggle" checked> Uploaded images</label>
-        <input type="range" id="opacity" min="0" max="1" step="0.05" value="0.9" aria-label="Image opacity">
-      </div>
-      <div style="height:12px"></div>
-      <div class="downloads" id="downloads"></div>
-    </div>
+
+      <div style="height:16px"></div>
+      <details class="images hidden" id="perImage">
+        <summary id="perImageTitle">Images</summary>
+        <ul id="perImageList"></ul>
+      </details>
+    </section>
   </aside>
   <div id="map"></div>
 </div>
 
 <script src="/static/vendor/leaflet/leaflet.js"></script>
 <script>
-const COLORS = { solid: '#ff4d4f', dashed: '#ffc53d', dash: '#40a9ff' };
-const LABELS = { solid: 'Solid', dashed: 'Dashed', dash: 'Single strokes' };
+const COLORS = { solid: '#ff4d5e', dashed: '#ffb020', dash: '#5aa9ff' };
+const LABELS = { solid: 'Solid', dashed: 'Dashed', dash: 'Stroke' };
+const $ = id => document.getElementById(id);
+const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmtLen = m => m >= 1000 ? `${(m / 1000).toLocaleString(undefined, { maximumFractionDigits: 2 })} km` : `${Math.round(m)} m`;
+const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 const map = L.map('map', { zoomControl: true }).setView([55.75, 37.62], 5);
 const imagery = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
   { maxZoom: 22, maxNativeZoom: 19, attribution: 'Imagery © Esri' }).addTo(map);
 const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
   { maxZoom: 22, maxNativeZoom: 19, attribution: '© OpenStreetMap contributors' });
-L.control.layers({ 'Satellite': imagery, 'OpenStreetMap': osm }, null, { position: 'topright' }).addTo(map);
+L.control.layers({ 'Satellite': imagery, 'Map': osm }, null, { position: 'topright' }).addTo(map);
 
-const $ = id => document.getElementById(id);
-const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-let files = new Map(), photos = L.layerGroup(), typeLayers = {};
-
-const stem = n => n.replace(/\.[^.]+$/, '').toLowerCase();
+// ---------- choosing files ----------
+const ACCEPT = /\.(tif|tiff|tfw|tifw|prj)$/i;
 const isTif = n => /\.tiff?$/i.test(n);
+const stem = n => n.replace(/\.[^.]+$/, '').toLowerCase();
+let files = new Map();
 
-function pick(list) {
-  for (const f of list) if (/\.(tif|tiff|tfw|tifw|prj)$/i.test(f.name)) files.set(f.name, f);
+function add(list) {
+  for (const f of list) if (ACCEPT.test(f.name)) files.set(f.name, f);
   render();
 }
+
+// a dropped folder arrives as a directory entry; walk it (and its subfolders)
+async function filesFromDrop(dt) {
+  const entries = [...dt.items].map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+  if (!entries.some(e => e.isDirectory)) return [...dt.files];
+  const out = [];
+  const walk = async entry => {
+    if (entry.isFile) { out.push(await new Promise((ok, no) => entry.file(ok, no))); return; }
+    const reader = entry.createReader();
+    for (;;) {
+      const batch = await new Promise((ok, no) => reader.readEntries(ok, no));
+      if (!batch.length) break;
+      for (const e of batch) await walk(e);
+    }
+  };
+  for (const e of entries) await walk(e);
+  return out;
+}
+
 function render() {
   const all = [...files.values()];
-  const tifs = all.filter(f => isTif(f.name));
+  const tifs = all.filter(f => isTif(f.name)).sort((a, b) => a.name.localeCompare(b.name));
   const side = all.filter(f => !isTif(f.name));
-  const rows = tifs.map(t => {
-    const mine = side.filter(c => stem(c.name) === stem(t.name) || tifs.length === 1);
-    const geo = mine.some(c => /\.(tfw|tifw)$/i.test(c.name)) ? '+ tfw' : '';
-    const prj = mine.some(c => /\.prj$/i.test(c.name)) ? '+ prj' : '';
-    return `<div><span>${esc(t.name)}</span><span>${[geo, prj].filter(Boolean).join(' ')}</span></div>`;
-  });
+  const companions = t => side.filter(c => stem(c.name) === stem(t.name) || tifs.length === 1);
+  $('fileList').innerHTML = tifs.map(t => {
+    const mine = companions(t);
+    const tfw = mine.some(c => /\.(tfw|tifw)$/i.test(c.name));
+    const prj = mine.some(c => /\.prj$/i.test(c.name));
+    return `<li><span class="name" title="${esc(t.name)}">${esc(t.name)}</span>` +
+      (tfw ? '<span class="tag">tfw</span>' : '') + (prj ? '<span class="tag">prj</span>' : '') +
+      `<button type="button" class="remove" data-name="${esc(t.name)}" aria-label="Remove">×</button></li>`;
+  }).join('');
   const orphans = tifs.length > 1 ? side.filter(c => !tifs.some(t => stem(t.name) === stem(c.name))) : [];
-  if (orphans.length) rows.push(`<div class="warn">No image for: ${orphans.map(o => esc(o.name)).join(', ')}</div>`);
-  $('fileList').innerHTML = rows.join('');
-  $('drop').classList.toggle('ready', tifs.length > 0);
+  $('orphans').textContent = orphans.length ? `No image found for ${orphans.map(o => o.name).join(', ')}` : '';
+  $('orphans').classList.toggle('hidden', !orphans.length);
   $('go').disabled = tifs.length === 0;
-  $('go').textContent = tifs.length > 1 ? `Extract markings from ${tifs.length} images` : 'Extract markings';
-  $('clearBtn').classList.toggle('hidden', all.length === 0);
+  $('go').textContent = tifs.length > 1 ? `Extract markings · ${tifs.length} images` : 'Extract markings';
 }
-$('drop').onclick = () => $('fileInput').click();
-$('fileInput').onchange = e => { pick(e.target.files); e.target.value = ''; };
-$('clearBtn').onclick = () => { files.clear(); render(); };
+
+$('fileList').addEventListener('click', e => {
+  const name = e.target.dataset && e.target.dataset.name;
+  if (!name) return;
+  for (const k of [...files.keys()]) if (k === name || stem(k) === stem(name)) files.delete(k);
+  render();
+});
+// the inputs live outside the drop zone, so opening them cannot re-trigger the zone's click
+$('drop').addEventListener('click', () => $('fileInput').click());
+$('pickFiles').addEventListener('click', e => { e.stopPropagation(); $('fileInput').click(); });
+$('pickFolder').addEventListener('click', e => { e.stopPropagation(); $('folderInput').click(); });
+for (const id of ['fileInput', 'folderInput'])
+  $(id).addEventListener('change', e => { add(e.target.files); e.target.value = ''; });
 ['dragenter', 'dragover'].forEach(t => $('drop').addEventListener(t, e => { e.preventDefault(); $('drop').classList.add('over'); }));
 ['dragleave', 'drop'].forEach(t => $('drop').addEventListener(t, e => { e.preventDefault(); $('drop').classList.remove('over'); }));
-$('drop').addEventListener('drop', e => pick(e.dataTransfer.files));
+$('drop').addEventListener('drop', async e => add(await filesFromDrop(e.dataTransfer)));
 
-$('form').onsubmit = async e => {
+// ---------- running ----------
+$('form').addEventListener('submit', async e => {
   e.preventDefault();
   const fd = new FormData();
   files.forEach(f => fd.append('files', f));
@@ -190,26 +272,29 @@ $('form').onsubmit = async e => {
     if (!r.ok) throw new Error(data.detail || 'Upload failed');
     poll(data.id);
   } catch (err) { fail(err.message); }
-};
+});
 
 function setProgress(f, msg) { $('bar').style.width = (f * 100) + '%'; $('status').textContent = msg; }
 function fail(msg) {
   $('progressBox').classList.add('hidden');
   $('errorBox').textContent = msg; $('errorBox').classList.remove('hidden');
-  $('go').disabled = false;
+  $('go').disabled = files.size === 0;
 }
 
 async function poll(id) {
-  const r = await fetch(`/api/jobs/${id}`);
-  const job = await r.json();
+  const job = await (await fetch(`/api/jobs/${id}`)).json();
   if (job.status === 'error') return fail(job.error);
   const n = job.images.length;
-  const prefix = n > 1 ? `Image ${Math.min(job.current + 1, n)} of ${n} · ` : '';
-  setProgress(job.progress, job.status === 'done' ? job.message : prefix + job.message);
+  const step = job.message.split(': ').pop();
+  setProgress(job.progress, n > 1 ? `${Math.min(job.current + 1, n)} of ${n} · ${step}` : step);
   if (job.status !== 'done') return setTimeout(() => poll(id), 700);
+  $('progressBox').classList.add('hidden');
   $('go').disabled = false;
   show(id, job);
 }
+
+// ---------- results ----------
+let photos = L.layerGroup().addTo(map), typeLayers = {};
 
 async function show(id, job) {
   const url = name => `/api/jobs/${id}/files/` + name.split('/').map(encodeURIComponent).join('/');
@@ -223,61 +308,59 @@ async function show(id, job) {
   Object.values(typeLayers).forEach(l => map.removeLayer(l));
   let bounds = null;
   done.forEach((im, i) => {
-    photos.addLayer(L.imageOverlay(url(im.files.preview), prevs[i].bounds, { opacity: +$('opacity').value }));
+    photos.addLayer(L.imageOverlay(url(im.files.preview), prevs[i].bounds, { opacity: .92 }));
     const b = L.latLngBounds(prevs[i].bounds);
     bounds = bounds ? bounds.extend(b) : b;
   });
-  photos.addTo(map);
   typeLayers = {};
   for (const t of Object.keys(COLORS)) {
     typeLayers[t] = L.geoJSON(geo, {
       filter: f => f.properties.type === t,
-      style: { color: COLORS[t], weight: t === 'dash' ? 3 : 2.5, opacity: .95 },
-      onEachFeature: (f, l) => l.bindPopup(
-        `<b>${LABELS[f.properties.type]}</b>, ${esc(f.properties.color)}<br>Length: ${f.properties.length_m} m` +
-        `<br>Pieces: ${f.properties.pieces}<br>Width ≈ ${f.properties.width_m} m<br>Image: ${esc(f.properties.image)}`)
+      style: { color: COLORS[t], weight: 2.5, opacity: .95, dashArray: t === 'dashed' ? '6 5' : null },
+      onEachFeature: (f, l) => {
+        const p = f.properties;
+        l.bindPopup(`<b>${LABELS[p.type]}</b> · ${esc(p.color)}<br>${fmtLen(p.length_m)}` +
+                    (done.length > 1 ? `<br><span style="color:#7a8790">${esc(p.image)}</span>` : ''));
+      },
     }).addTo(map);
   }
   document.querySelectorAll('[data-layer]').forEach(cb => cb.checked = true);
   $('photoToggle').checked = true;
-  if (bounds) map.fitBounds(bounds);
+  photos.addTo(map);
+  if (bounds) map.fitBounds(bounds, { padding: [20, 20] });
 
-  const s = job.stats;
-  $('summary').innerHTML = Object.keys(COLORS).filter(t => t !== 'dash' || s.by_type.dash).map(t => {
-    const v = s.by_type[t] || { count: 0, length_m: 0 };
-    return `<tr><td><span class="sw" style="background:${COLORS[t]}"></span>${LABELS[t]}</td>` +
-           `<td class="num">${v.count}</td><td class="num">${v.length_m.toLocaleString()} m</td></tr>`;
-  }).join('');
-  const one = done.length === 1 ? done[0].stats : null;
-  $('meta').innerHTML = (one
-    ? `${one.size_px[0]}×${one.size_px[1]} px · ${(one.gsd_m * 100).toFixed(1)} cm/px · ${esc(one.crs)}<br>` +
-      `Vehicles excluded: ${one.vehicles} · processed in ${one.total_s} s`
-    : `${done.length} images · ${esc(s.crs)} · processed in ${s.total_s} s`);
+  const s = job.stats, bt = s.by_type || {};
+  for (const t of ['solid', 'dashed']) {
+    const v = bt[t] || { count: 0, length_m: 0 };
+    $(`${t}Len`).textContent = fmtLen(v.length_m);
+    $(`${t}Count`).textContent = `${LABELS[t]} · ${v.count}`;
+  }
+  const failed = job.images.length - done.length;
+  $('meta').textContent = [done.length > 1 ? plural(done.length, 'image') : null, `${s.total_s} s`,
+                           failed ? `${failed} failed` : null].filter(Boolean).join(' · ');
 
-  $('perImageCard').classList.toggle('hidden', job.images.length < 2);
-  $('perImage').innerHTML = job.images.map(im => {
+  $('dlMain').href = url(job.files.gpkg);
+  $('dlMore').innerHTML = [['shp', 'Shapefile'], ['geojson', 'GeoJSON']].filter(([k]) => job.files[k])
+    .map(([k, label]) => `<a class="link" href="${url(job.files[k])}" download>${label}</a>`).join('·');
+
+  $('perImage').classList.toggle('hidden', job.images.length < 2);
+  $('perImage').open = failed > 0;
+  $('perImageTitle').textContent = `Images (${job.images.length})`;
+  $('perImageList').innerHTML = job.images.map(im => {
     if (im.status !== 'done')
-      return `<tr><td>${esc(im.name)}</td><td colspan="2" style="color:var(--err-ink)">${esc(im.error || im.status)}</td></tr>`;
-    const st = im.stats;
-    const len = Object.values(st.by_type).reduce((a, v) => a + v.length_m, 0);
-    return `<tr><td>${esc(im.name)}<br><a href="${url(im.files.gpkg)}" download>GeoPackage</a></td>` +
-           `<td class="num">${st.lines} lines<br>${Math.round(len).toLocaleString()} m</td>` +
-           `<td class="num">${st.total_s} s</td></tr>`;
+      return `<li><span class="name">${esc(im.name)}</span><span class="failed" title="${esc(im.error || '')}">failed</span></li>`;
+    const len = Object.values(im.stats.by_type).reduce((a, v) => a + v.length_m, 0);
+    return `<li><a class="link name" href="${url(im.files.gpkg)}" download title="Download GeoPackage">${esc(im.name)}</a>` +
+           `<span class="num">${fmtLen(len)}</span></li>`;
   }).join('');
-
-  const dl = [['gpkg', 'GeoPackage'], ['shp', 'Shapefile (zip)'], ['geojson', 'GeoJSON'], ['stats', 'Stats (json)']];
-  $('downloads').innerHTML = dl.filter(([k]) => job.files[k])
-    .map(([k, label]) => `<a class="btn" href="${url(job.files[k])}" download>${label}</a>`).join('');
-  $('dashLayer').classList.toggle('hidden', !s.by_type.dash);
   $('results').classList.remove('hidden');
 }
 
-document.querySelectorAll('[data-layer]').forEach(cb => cb.onchange = () => {
+document.querySelectorAll('[data-layer]').forEach(cb => cb.addEventListener('change', () => {
   const l = typeLayers[cb.dataset.layer]; if (!l) return;
   cb.checked ? l.addTo(map) : map.removeLayer(l);
-});
-$('photoToggle').onchange = e => e.target.checked ? photos.addTo(map) : map.removeLayer(photos);
-$('opacity').oninput = e => photos.eachLayer(l => l.setOpacity(+e.target.value));
+}));
+$('photoToggle').addEventListener('change', e => e.target.checked ? photos.addTo(map) : map.removeLayer(photos));
 </script>
 </body>
 </html>

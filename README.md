@@ -82,7 +82,7 @@ aerial-markings extract photos/*.tif -o results/    # results/<image>/... plus r
 aerial-markings extract tile.tif --crs EPSG:32637   # if the image carries no CRS
 ```
 
-In the web interface, drop several `.tif` files together with their `.tfw` / `.prj`; companions are matched to images by file name. Images are processed one after another, and a failure in one does not stop the rest.
+In the web interface, drop files or a whole folder (or pick them with "Choose files" / "Choose folder"); `.tfw` and `.prj` are matched to images by file name. Images are processed one after another, and a failure in one does not stop the rest.
 
 The YOLO weights (`yolo11n-obb.pt`, 5.5 MB) download automatically on first run.
 
