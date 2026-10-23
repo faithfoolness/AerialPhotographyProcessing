@@ -67,12 +67,7 @@
   .status { font-size: 13px; color: var(--muted); margin-top: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .error { background: var(--err); color: var(--err-ink); padding: 10px 12px; border-radius: 10px; font-size: 13px; }
 
-  .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .tile { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
-  .tile b { display: block; font-size: 22px; font-weight: 650; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
-  .tile span { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
   .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-  .meta { font-size: 12px; color: var(--muted); margin: 8px 2px 0; }
   .more { display: flex; justify-content: center; gap: 6px; color: var(--faint); margin-top: 8px; }
 
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -146,13 +141,6 @@
     <div id="errorBox" class="error hidden"></div>
 
     <section id="results" class="hidden">
-      <div class="tiles">
-        <div class="tile"><b id="solidLen">0</b><span><i class="dot" style="background:var(--solid)"></i><span id="solidCount">Solid</span></span></div>
-        <div class="tile"><b id="dashedLen">0</b><span><i class="dot" style="background:var(--dashed)"></i><span id="dashedCount">Dashed</span></span></div>
-      </div>
-      <p class="meta" id="meta"></p>
-
-      <div style="height:14px"></div>
       <a class="primary" id="dlMain" download>Download GeoPackage</a>
       <div class="more" id="dlMore"></div>
 
@@ -235,6 +223,7 @@ function render() {
   $('orphans').textContent = orphans.length ? `No image found for ${orphans.map(o => o.name).join(', ')}` : '';
   $('orphans').classList.toggle('hidden', !orphans.length);
   $('go').disabled = tifs.length === 0;
+  $('go').classList.remove('hidden');                // a new selection can be extracted again
   $('go').textContent = tifs.length > 1 ? `Extract markings · ${tifs.length} images` : 'Extract markings';
 }
 
@@ -261,7 +250,7 @@ $('form').addEventListener('submit', async e => {
   files.forEach(f => fd.append('files', f));
   fd.append('crs', $('crs').value);
   fd.append('vehicles', $('vehicles').checked);
-  $('go').disabled = true;
+  $('go').classList.add('hidden');
   $('errorBox').classList.add('hidden');
   $('results').classList.add('hidden');
   $('progressBox').classList.remove('hidden');
@@ -278,6 +267,7 @@ function setProgress(f, msg) { $('bar').style.width = (f * 100) + '%'; $('status
 function fail(msg) {
   $('progressBox').classList.add('hidden');
   $('errorBox').textContent = msg; $('errorBox').classList.remove('hidden');
+  $('go').classList.remove('hidden');
   $('go').disabled = files.size === 0;
 }
 
@@ -289,7 +279,6 @@ async function poll(id) {
   setProgress(job.progress, n > 1 ? `${Math.min(job.current + 1, n)} of ${n} · ${step}` : step);
   if (job.status !== 'done') return setTimeout(() => poll(id), 700);
   $('progressBox').classList.add('hidden');
-  $('go').disabled = false;
   show(id, job);
 }
 
@@ -329,16 +318,7 @@ async function show(id, job) {
   photos.addTo(map);
   if (bounds) map.fitBounds(bounds, { padding: [20, 20] });
 
-  const s = job.stats, bt = s.by_type || {};
-  for (const t of ['solid', 'dashed']) {
-    const v = bt[t] || { count: 0, length_m: 0 };
-    $(`${t}Len`).textContent = fmtLen(v.length_m);
-    $(`${t}Count`).textContent = `${LABELS[t]} · ${v.count}`;
-  }
   const failed = job.images.length - done.length;
-  $('meta').textContent = [done.length > 1 ? plural(done.length, 'image') : null, `${s.total_s} s`,
-                           failed ? `${failed} failed` : null].filter(Boolean).join(' · ');
-
   $('dlMain').href = url(job.files.gpkg);
   $('dlMore').innerHTML = [['shp', 'Shapefile'], ['geojson', 'GeoJSON']].filter(([k]) => job.files[k])
     .map(([k, label]) => `<a class="link" href="${url(job.files[k])}" download>${label}</a>`).join('·');
