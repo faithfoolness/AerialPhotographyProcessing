@@ -192,7 +192,7 @@ async function show(id, job) {
       filter: f => f.properties.type === t,
       style: { color: COLORS[t], weight: t === 'dash' ? 3 : 2.5, opacity: .95 },
       onEachFeature: (f, l) => l.bindPopup(
-        `<b>${LABELS[f.properties.type]}</b><br>Length: ${f.properties.length_m} m` +
+        `<b>${LABELS[f.properties.type]}</b>, ${f.properties.color}<br>Length: ${f.properties.length_m} m` +
         `<br>Pieces: ${f.properties.pieces}<br>Width ≈ ${f.properties.width_m} m`)
     }).addTo(map);
   }

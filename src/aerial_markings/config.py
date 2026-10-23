@@ -12,13 +12,15 @@ from dataclasses import asdict, dataclass, field
 
 @dataclass
 class MaskParams:
-    # Markings are thin bright stripes; a white top-hat with a window wider
-    # than the widest marking keeps them and removes large bright areas
-    # (concrete, roofs, sun glare on the asphalt).
-    max_marking_width_m: float = 0.45
-    tophat_threshold: int = 22          # min local contrast, 0-255 luminance (white on light asphalt is faint)
+    # Markings are thin bright stripes: brighter than the surface on BOTH
+    # sides. Comparing each pixel with points 20-35 cm away across it finds
+    # paint up to ~0.5 m wide and ignores slab edges, joints and shoulders.
+    ridge_offsets_m: tuple = (0.2, 0.35)
+    ridge_threshold: int = 16           # min brightness above both sides, 0-255
     min_brightness: int = 120           # absolute luminance floor
-    max_saturation: int = 70            # markings are white/grey, not coloured
+    max_saturation: int = 70            # white/grey paint...
+    max_yellow_saturation: int = 220    # ...or yellow paint
+    yellow_b_threshold: float = 8.0     # Lab b* above neutral that makes a line "yellow"
     exclude_vegetation: bool = True     # drop pixels where green clearly dominates
 
 
@@ -40,11 +42,25 @@ class RoadParams:
 
 
 @dataclass
+class SurfaceParams:
+    # Paint lies on pavement: at least one side of a line must be asphalt or
+    # concrete. Guardrails and debris stand on soil, gravel or grass.
+    enabled: bool = True
+    max_saturation: int = 50            # bluish dark asphalt ~40, orange soil ~57
+    max_excess_green: int = 12
+    min_value: int = 50
+    side_offsets_m: tuple = (0.5, 0.8, 1.1)   # beyond the second rail of a guardrail
+    sample_step_m: float = 0.5
+    min_share: float = 0.6              # of positions along the line
+
+
+@dataclass
 class ShapeParams:
     min_length_m: float = 0.8           # shorter blobs are noise
     min_elongation: float = 3.0         # length / width
     max_width_m: float = 0.45           # wider stripes are not line markings (paint is 0.1-0.25 m + blur)
     max_spread_m: float = 0.8           # area per metre of axis; specks stuck to a line are tolerated
+    max_holes_per_10m: float = 0.5      # enclosed gaps: paint has none, a guardrail is a ladder
     dash_max_length_m: float = 7.0      # longer pieces are solid lines
     keep_single_strokes: bool = False   # strokes that are not part of a dashed line
     isolated_min_length_m: float = 2.0  # ...and if they are kept, their minimum length
@@ -71,8 +87,9 @@ class MergeParams:
     dash_max_gap_m: float = 22.0        # one stroke may be hidden by a shadow or a car
     max_angle_deg: float = 12.0
     max_lateral_offset_m: float = 0.4
+    lateral_per_gap: float = 0.05       # + 5 cm of offset per metre of gap (~3 degrees)
     min_dashes: int = 4                 # fewer aligned strokes are not a dashed line
-    min_dashed_length_m: float = 15.0   # nor is a shorter one (a stroke + gap cycle is 4-12 m)
+    min_dashed_length_m: float = 25.0   # nor is a shorter one (two stroke + gap cycles)
     rhythm_tolerance: float = 0.4       # strokes and gaps of a dashed line within ±40 % of the median...
     min_steady_share: float = 0.6       # ...for at least this share of them
     guide_min_length_m: float = 60.0    # long solid lines used as the reference direction
@@ -80,12 +97,15 @@ class MergeParams:
     guide_radius_m: float = 20.0
     guide_check_max_m: float = 40.0     # longer dashed lines are trusted as they are
     simplify_tolerance_px: float = 1.5
+    smooth_window_m: float = 4.0        # moving average along the final lines; highway bends are far gentler
+    smooth_step_m: float = 0.5
 
 
 @dataclass
 class Params:
     road: RoadParams = field(default_factory=RoadParams)
     mask: MaskParams = field(default_factory=MaskParams)
+    surface: SurfaceParams = field(default_factory=SurfaceParams)
     shape: ShapeParams = field(default_factory=ShapeParams)
     vehicles: VehicleParams = field(default_factory=VehicleParams)
     merge: MergeParams = field(default_factory=MergeParams)

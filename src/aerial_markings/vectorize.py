@@ -113,6 +113,24 @@ def window_wiggle(coords: np.ndarray, window: float) -> float:
     return float(np.median(devs))
 
 
+def _holes_per_10m(crop: np.ndarray, gsd_m: float) -> float:
+    """Enclosed gaps per 10 m of length.
+
+    Paint is a solid stripe. A guardrail seen from above is two rails joined
+    by posts every couple of metres, so its mask looks like a ladder full of
+    small windows.
+    """
+    cnts, hier = cv2.findContours(crop.view(np.uint8), cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+    if hier is None:
+        return 0.0
+    min_area = 0.01 / gsd_m ** 2
+    holes = sum(1 for k, c in enumerate(cnts) if hier[0][k][3] >= 0 and cv2.contourArea(c) >= min_area)
+    if holes == 0:
+        return 0.0
+    length_m = max(crop.shape) * gsd_m
+    return holes / max(length_m, 1.0) * 10
+
+
 def extract_segments(mask: np.ndarray, gsd_m: float, p: ShapeParams, simplify_px: float = 1.5) -> tuple[list[Segment], dict]:
     n, labels, stats, _ = cv2.connectedComponentsWithStats(mask.view(np.uint8), connectivity=8)
     min_area_px = (p.min_length_m * 0.05) / gsd_m ** 2
@@ -126,6 +144,9 @@ def extract_segments(mask: np.ndarray, gsd_m: float, p: ShapeParams, simplify_px
             counters["too_small"] += 1
             continue
         crop = np.pad(labels[y:y + h, x:x + w] == i, 1)
+        if _holes_per_10m(crop, gsd_m) > p.max_holes_per_10m:
+            counters["ladder_dropped"] = counters.get("ladder_dropped", 0) + 1
+            continue                                 # guardrail: two rails joined by posts
         skel = skeletonize(crop)
         paths = skeleton_paths(skel, min_len_px)
         if not paths:

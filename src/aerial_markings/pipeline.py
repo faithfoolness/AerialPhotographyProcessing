@@ -15,10 +15,11 @@ from shapely.geometry import LineString, Polygon
 from shapely.affinity import affine_transform
 
 from .config import Params
-from .mask import marking_mask
-from .merge import drop_misaligned, merge_segments
+from .mask import is_yellow, marking_mask
+from .merge import drop_misaligned, merge_segments, smooth_line
 from .raster import Ortho, read_ortho
 from .road import road_mask
+from .surface import pavement_map, pavement_share
 from .vectorize import extract_segments
 from .vehicles import detect_vehicles
 
@@ -73,12 +74,24 @@ def run(image: str | Path, params: Params | None = None, crs: str | None = None,
     with _stage(timings, "vectorize", progress, 0.60, "Tracing centre lines"):
         segments, counters = extract_segments(mask, gsd, p.shape, p.merge.simplify_tolerance_px)
 
+    with _stage(timings, "surface", progress, 0.75, "Checking what lies beside the lines"):
+        if p.surface.enabled and segments:
+            pave = pavement_map(ortho.rgb, p.surface)
+            before = len(segments)
+            segments = [s for s in segments
+                        if pavement_share(pave, s.pixels, gsd, p.surface) >= p.surface.min_share]
+            counters["off_pavement_dropped"] = before - len(segments)
+            del pave
+        colors = ["yellow" if is_yellow(ortho.rgb, s.pixels, p.mask.yellow_b_threshold) else "white"
+                  for s in segments]
+
     with _stage(timings, "merge", progress, 0.85, "Joining pieces into lines"):
         crs_in = ortho.crs
         seg_geoms = [_pixel_to_crs(LineString(s.pixels), ortho.transform) for s in segments]
         seg_gdf = gpd.GeoDataFrame(
             {
                 "type": [s.kind for s in segments],
+                "color": colors,
                 "length_m": [round(s.length_m, 2) for s in segments],
                 "width_m": [round(s.width_m, 3) for s in segments],
             },
@@ -86,8 +99,14 @@ def run(image: str | Path, params: Params | None = None, crs: str | None = None,
         )
         work_crs = crs_in if crs_in.is_projected else seg_gdf.estimate_utm_crs() if len(seg_gdf) else crs_in
         seg_m = seg_gdf.to_crs(work_crs)
-        chains = merge_segments([np.asarray(g.coords) for g in seg_m.geometry],
-                                list(seg_m["type"]), p.merge)
+        all_lines = [np.asarray(g.coords) for g in seg_m.geometry]
+        chains = []
+        for color in ("white", "yellow"):                 # never join pieces of different colour
+            idx = [i for i, c in enumerate(colors) if c == color]
+            for ch in merge_segments([all_lines[i] for i in idx], [segments[i].kind for i in idx], p.merge):
+                ch.members = [idx[m] for m in ch.members]
+                ch.color = color
+                chains.append(ch)
         n_before = len(chains)
         chains = drop_misaligned(chains, p.merge)
         counters["misaligned_dropped"] = n_before - len(chains)
@@ -95,10 +114,12 @@ def run(image: str | Path, params: Params | None = None, crs: str | None = None,
         markings = gpd.GeoDataFrame(
             {
                 "type": [c.kind for c in chains],
+                "color": [c.color for c in chains],
                 "pieces": [len(c.members) for c in chains],
                 "width_m": [round(float(np.mean(widths[c.members])), 3) for c in chains],
             },
-            geometry=[LineString(c.coords) for c in chains], crs=work_crs,
+            geometry=[LineString(smooth_line(c.coords, p.merge.smooth_window_m, p.merge.smooth_step_m))
+                      for c in chains], crs=work_crs,
         )
         markings["length_m"] = markings.length.round(2)
         lone = (markings["type"] == "dash") & (

@@ -21,6 +21,7 @@ class Chain:
     coords: np.ndarray                     # N x 2, metric CRS
     kind: str                              # solid | dashed | dash
     members: list[int] = field(default_factory=list)
+    color: str = "white"
 
 
 def _end_direction(coords: np.ndarray, at_start: bool, probe: float = 1.5) -> np.ndarray:
@@ -63,7 +64,9 @@ def _links(lines: list[np.ndarray], max_gap: float, p: MergeParams):
             if _angle(da, u) > p.max_angle_deg or _angle(-db, u) > p.max_angle_deg:
                 continue                                 # next piece is not straight ahead
             lateral = abs(da[0] * gap_vec[1] - da[1] * gap_vec[0])
-            if lateral > p.max_lateral_offset_m:
+            # direction of a short stroke is known to a few degrees, so the
+            # tolerated offset grows with the gap
+            if lateral > p.max_lateral_offset_m + p.lateral_per_gap * gap:
                 continue
         cand.append((gap + 0.5 * _angle(da, -db), a, b))
     cand.sort()
@@ -217,3 +220,26 @@ def drop_misaligned(chains: list[Chain], p: MergeParams) -> list[Chain]:
         if angle <= p.max_angle_deg:
             out.append(c)
     return out
+
+
+def smooth_line(coords: np.ndarray, window: float, step: float) -> np.ndarray:
+    """Resample every `step` metres and apply a moving average over `window` metres.
+
+    The skeleton of real paint is jagged by a pixel or two; road geometry is
+    smooth at the scale of metres. Ends are kept in place.
+    """
+    seg = np.linalg.norm(np.diff(coords, axis=0), axis=1)
+    cum = np.concatenate([[0.0], np.cumsum(seg)])
+    total = cum[-1]
+    if total < 2 * step:
+        return coords
+    t = np.linspace(0, total, max(int(total / step), 2) + 1)
+    pts = np.column_stack([np.interp(t, cum, coords[:, 0]), np.interp(t, cum, coords[:, 1])])
+    k = int(round(window / step)) // 2
+    if k < 1 or len(pts) < 3:
+        return pts
+    pad = np.vstack([2 * pts[0] - pts[k:0:-1], pts, 2 * pts[-1] - pts[-2:-k - 2:-1]])   # odd reflection
+    kernel = np.ones(2 * k + 1) / (2 * k + 1)
+    sm = np.column_stack([np.convolve(pad[:, i], kernel, mode="valid") for i in range(2)])
+    sm[0], sm[-1] = pts[0], pts[-1]
+    return sm
