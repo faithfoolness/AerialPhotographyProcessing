@@ -182,11 +182,13 @@ def _densify(coords: np.ndarray, step: float) -> np.ndarray:
 
 
 def drop_misaligned(chains: list[Chain], p: MergeParams) -> list[Chain]:
-    """Remove strokes that cross the direction of the road.
+    """Remove pieces that do not follow the road.
 
     Poles, their shadows and kerb stones near the edge are short and bright
-    like a dash, but they stand across the road. Each stroke or short dashed
-    line is compared with the nearest long solid line.
+    like a dash, but they stand across the road; bright debris in a field
+    can form a short straight "solid line" far from any road. Each short
+    piece is compared with the nearest long solid line: it must be parallel
+    to it, and a short solid piece must also be near it.
     """
     guides = [c.coords for c in chains if c.kind == "solid" and _length(c.coords) >= p.guide_min_length_m]
     if not guides:
@@ -197,14 +199,17 @@ def drop_misaligned(chains: list[Chain], p: MergeParams) -> list[Chain]:
     tree = cKDTree(pts)
     out = []
     for c in chains:
-        if c.kind == "solid" or _length(c.coords) > p.guide_check_max_m:
+        length = _length(c.coords)
+        limit = p.short_solid_max_m if c.kind == "solid" else p.guide_check_max_m
+        if length > limit or any(c.coords is g for g in guides):
             out.append(c)
             continue
         centre = c.coords.mean(axis=0)
         dist, i = tree.query(centre)
         if dist > p.guide_radius_m:
-            out.append(c)                                # nothing to compare with
-            continue
+            if c.kind != "solid":
+                out.append(c)                            # a dashed line far from any edge line
+            continue                                     # a short solid piece alone in the field
         d = c.coords[-1] - c.coords[0]
         d = d / (np.linalg.norm(d) or 1.0)
         g = _direction_at(guides[owner[i]], centre)

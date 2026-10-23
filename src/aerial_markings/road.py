@@ -43,7 +43,7 @@ def road_mask(rgb: np.ndarray, valid: np.ndarray, gsd_m: float, p: RoadParams) -
 
     # fill markings, cracks and tyre marks; remove thin and small false regions
     cand = cv2.morphologyEx(cand, cv2.MORPH_CLOSE,
-                            cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (px(1.0) * 2 + 1,) * 2))
+                            cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (px(p.fill_holes_m) * 2 + 1,) * 2))
     cand = cv2.morphologyEx(cand, cv2.MORPH_OPEN,
                             cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (px(p.min_road_width_m),) * 2))
     n, labels, stats, _ = cv2.connectedComponentsWithStats(cand, connectivity=8)

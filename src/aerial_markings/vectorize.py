@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 from scipy.sparse import coo_matrix
+from scipy.ndimage import distance_transform_edt
 from scipy.sparse.csgraph import connected_components, dijkstra
 from shapely.geometry import LineString
 from skimage.morphology import skeletonize
@@ -90,6 +91,28 @@ def skeleton_paths(skel: np.ndarray, min_len_px: float, max_paths: int = 6) -> l
     return out
 
 
+def window_wiggle(coords: np.ndarray, window: float) -> float:
+    """Median deviation from a straight chord over sliding windows of a polyline.
+
+    Paint follows the road smoothly: even on a bend, a few metres of it are
+    practically straight. Chains of grains or grass blades meander at every
+    step. Returns 0 for polylines shorter than one window.
+    """
+    seg = np.linalg.norm(np.diff(coords, axis=0), axis=1)
+    cum = np.concatenate([[0.0], np.cumsum(seg)])
+    if cum[-1] < window:
+        return 0.0
+    devs, start = [], 0.0
+    while start + window <= cum[-1]:
+        t = np.linspace(start, start + window, 12)
+        pts = np.column_stack([np.interp(t, cum, coords[:, 0]), np.interp(t, cum, coords[:, 1])])
+        d = pts[-1] - pts[0]
+        d = d / (np.linalg.norm(d) or 1.0)
+        devs.append(float(np.abs((pts - pts[0]) @ np.array([-d[1], d[0]])).max()))
+        start += window / 2
+    return float(np.median(devs))
+
+
 def extract_segments(mask: np.ndarray, gsd_m: float, p: ShapeParams, simplify_px: float = 1.5) -> tuple[list[Segment], dict]:
     n, labels, stats, _ = cv2.connectedComponentsWithStats(mask.view(np.uint8), connectivity=8)
     min_area_px = (p.min_length_m * 0.05) / gsd_m ** 2
@@ -108,10 +131,16 @@ def extract_segments(mask: np.ndarray, gsd_m: float, p: ShapeParams, simplify_px
         if not paths:
             counters["too_small"] += 1
             continue
-        total_len_px = sum(length for _, length in paths)
-        width_px = area / max(total_len_px, 1.0)
+        # width = twice the median distance from the axis to the edge of the blob;
+        # bright specks stuck to a line hardly change the median
+        dist = distance_transform_edt(crop)
+        axis = paths[0][0]
+        width_px = max(2.0 * float(np.median(dist[axis[:, 1], axis[:, 0]])) - 1.0, 1.0)
         main_len_px = paths[0][1]
-        if (width_px * gsd_m > p.max_width_m
+        # ...but a chain of grains along a gravel shoulder is narrow at the axis
+        # and has a lot of area around it
+        spread_m = area / max(sum(length for _, length in paths), 1.0) * gsd_m
+        if (width_px * gsd_m > p.max_width_m or spread_m > p.max_spread_m
                 or main_len_px / max(width_px, 1.0) < p.min_elongation):
             counters["bad_shape"] += 1
             continue
@@ -123,6 +152,8 @@ def extract_segments(mask: np.ndarray, gsd_m: float, p: ShapeParams, simplify_px
             chord = float(np.linalg.norm(xy[-1] - xy[0]))
             if length_m < p.straight_check_max_m and chord / max(line.length, 1.0) < p.min_straightness:
                 continue                             # curved like a grass blade
+            if window_wiggle(np.asarray(line.coords), p.wiggle_window_m / gsd_m) * gsd_m > p.max_wiggle_m:
+                continue                             # meanders like a chain of gravel grains
             kept_any = True
             kind = "solid" if length_m > p.dash_max_length_m else "dash"
             segments.append(Segment(np.asarray(line.coords), length_m, width_px * gsd_m, kind))

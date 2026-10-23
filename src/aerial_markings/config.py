@@ -16,7 +16,7 @@ class MaskParams:
     # than the widest marking keeps them and removes large bright areas
     # (concrete, roofs, sun glare on the asphalt).
     max_marking_width_m: float = 0.45
-    tophat_threshold: int = 30          # min local contrast, 0-255 luminance
+    tophat_threshold: int = 22          # min local contrast, 0-255 luminance (white on light asphalt is faint)
     min_brightness: int = 120           # absolute luminance floor
     max_saturation: int = 70            # markings are white/grey, not coloured
     exclude_vegetation: bool = True     # drop pixels where green clearly dominates
@@ -28,11 +28,12 @@ class RoadParams:
     enabled: bool = True
     work_gsd_m: float = 0.25            # the mask is computed at this resolution
     texture_window_m: float = 1.0
-    max_texture: float = 9.0            # std of brightness; asphalt is smooth, grass is not
+    max_texture: float = 12.0           # std of brightness; asphalt is smooth, grass is not
     max_saturation: int = 45
-    max_excess_green: int = 10          # 2G - R - B
+    max_excess_green: int = 15          # 2G - R - B
     min_brightness: int = 35
-    max_brightness: int = 200
+    max_brightness: int = 250           # only blown-out pixels; asphalt can be very light
+    fill_holes_m: float = 2.0           # joints, patches and paint inside the carriageway
     min_road_width_m: float = 2.5
     min_area_m2: float = 300.0
     margin_m: float = 0.6               # edge lines lie on the border of the asphalt
@@ -42,12 +43,15 @@ class RoadParams:
 class ShapeParams:
     min_length_m: float = 0.8           # shorter blobs are noise
     min_elongation: float = 3.0         # length / width
-    max_width_m: float = 0.6            # wider stripes are not line markings
+    max_width_m: float = 0.45           # wider stripes are not line markings (paint is 0.1-0.25 m + blur)
+    max_spread_m: float = 0.8           # area per metre of axis; specks stuck to a line are tolerated
     dash_max_length_m: float = 7.0      # longer pieces are solid lines
     keep_single_strokes: bool = False   # strokes that are not part of a dashed line
     isolated_min_length_m: float = 2.0  # ...and if they are kept, their minimum length
     min_straightness: float = 0.9       # chord / path length for strokes; grass blades bend
-    straight_check_max_m: float = 30.0  # longer lines may follow a curved road
+    straight_check_max_m: float = 30.0  # longer lines may follow a curved road...
+    wiggle_window_m: float = 5.0        # ...but any 5 m of paint is nearly straight
+    max_wiggle_m: float = 0.2           # median deviation of such a window from its chord
 
 
 @dataclass
@@ -71,7 +75,8 @@ class MergeParams:
     min_dashed_length_m: float = 15.0   # nor is a shorter one (a stroke + gap cycle is 4-12 m)
     rhythm_tolerance: float = 0.4       # strokes and gaps of a dashed line within ±40 % of the median...
     min_steady_share: float = 0.6       # ...for at least this share of them
-    guide_min_length_m: float = 30.0    # solid lines used as the reference direction
+    guide_min_length_m: float = 60.0    # long solid lines used as the reference direction
+    short_solid_max_m: float = 40.0     # shorter solid lines must be parallel to a reference line
     guide_radius_m: float = 20.0
     guide_check_max_m: float = 40.0     # longer dashed lines are trusted as they are
     simplify_tolerance_px: float = 1.5
