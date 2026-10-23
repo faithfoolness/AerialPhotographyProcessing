@@ -58,10 +58,10 @@ def _links(lines: list[np.ndarray], max_gap: float, p: MergeParams):
         da, db = dirs[a], dirs[b]
         if _angle(da, -db) > p.max_angle_deg:           # pieces must be parallel
             continue
-        if gap > 1e-6:
+        if gap > p.max_lateral_offset_m:
             u = gap_vec / gap
-            if _angle(da, u) > p.max_angle_deg and gap > p.max_lateral_offset_m:
-                continue                                 # next piece is not ahead
+            if _angle(da, u) > p.max_angle_deg or _angle(-db, u) > p.max_angle_deg:
+                continue                                 # next piece is not straight ahead
             lateral = abs(da[0] * gap_vec[1] - da[1] * gap_vec[0])
             if lateral > p.max_lateral_offset_m:
                 continue
@@ -129,11 +129,86 @@ def merge_segments(lines: list[np.ndarray], kinds: list[str], p: MergeParams) ->
             for j, rev in chain:
                 c = subset[j][::-1] if rev else subset[j]
                 parts.append(c)
-            coords = np.vstack(parts)
             members = [idx[j] for j, _ in chain]
-            if kind == "dash":
-                label = "dashed" if len(chain) >= 2 else "dash"
-            else:
-                label = "solid"
-            out.append(Chain(coords, label, members))
+            span = _length(np.vstack(parts))
+            if kind == "dash" and (len(chain) < p.min_dashes or span < p.min_dashed_length_m
+                                   or not _regular(parts, p)):
+                # too few aligned strokes for a dashed line: keep them as single strokes
+                out.extend(Chain(part, "dash", [m]) for part, m in zip(parts, members))
+                continue
+            label = "dashed" if kind == "dash" else "solid"
+            out.append(Chain(np.vstack(parts), label, members))
+    return out
+
+
+def _length(c: np.ndarray) -> float:
+    return float(np.linalg.norm(np.diff(c, axis=0), axis=1).sum())
+
+
+def _steady(values, tol: float) -> float:
+    """Share of values within ±tol of the median: robust to a missing or broken stroke."""
+    v = np.asarray(values, dtype=float)
+    if len(v) < 2:
+        return 1.0
+    med = np.median(v)
+    return float(np.mean(np.abs(v - med) <= tol * med)) if med > 0 else 0.0
+
+
+def _regular(parts: list[np.ndarray], p: MergeParams) -> bool:
+    """Painted dashes repeat with a steady rhythm; debris on the shoulder does not."""
+    lengths = [_length(c) for c in parts]
+    gaps = [float(np.linalg.norm(b[0] - a[-1])) for a, b in zip(parts, parts[1:])]
+    return (_steady(lengths, p.rhythm_tolerance) >= p.min_steady_share
+            and _steady(gaps, p.rhythm_tolerance) >= p.min_steady_share)
+
+
+def _direction_at(coords: np.ndarray, point: np.ndarray) -> np.ndarray:
+    """Unit direction of a polyline at the vertex pair closest to `point`."""
+    seg = np.diff(coords, axis=0)
+    mid = (coords[:-1] + coords[1:]) / 2
+    k = int(np.argmin(np.linalg.norm(mid - point, axis=1)))
+    v = seg[k]
+    n = np.linalg.norm(v)
+    return v / n if n > 0 else np.zeros(2)
+
+
+def _densify(coords: np.ndarray, step: float) -> np.ndarray:
+    out = [coords[:1]]
+    for a, b in zip(coords[:-1], coords[1:]):
+        n = max(int(np.ceil(np.linalg.norm(b - a) / step)), 1)
+        t = np.linspace(0, 1, n + 1)[1:, None]
+        out.append(a + (b - a) * t)
+    return np.vstack(out)
+
+
+def drop_misaligned(chains: list[Chain], p: MergeParams) -> list[Chain]:
+    """Remove strokes that cross the direction of the road.
+
+    Poles, their shadows and kerb stones near the edge are short and bright
+    like a dash, but they stand across the road. Each stroke or short dashed
+    line is compared with the nearest long solid line.
+    """
+    guides = [c.coords for c in chains if c.kind == "solid" and _length(c.coords) >= p.guide_min_length_m]
+    if not guides:
+        return chains
+    dense = [_densify(g, 1.0) for g in guides]          # a straight line may have only two vertices
+    pts = np.vstack(dense)
+    owner = np.concatenate([np.full(len(g), i) for i, g in enumerate(dense)])
+    tree = cKDTree(pts)
+    out = []
+    for c in chains:
+        if c.kind == "solid" or _length(c.coords) > p.guide_check_max_m:
+            out.append(c)
+            continue
+        centre = c.coords.mean(axis=0)
+        dist, i = tree.query(centre)
+        if dist > p.guide_radius_m:
+            out.append(c)                                # nothing to compare with
+            continue
+        d = c.coords[-1] - c.coords[0]
+        d = d / (np.linalg.norm(d) or 1.0)
+        g = _direction_at(guides[owner[i]], centre)
+        angle = np.degrees(np.arccos(np.clip(abs(float(d @ g)), 0, 1)))
+        if angle <= p.max_angle_deg:
+            out.append(c)
     return out

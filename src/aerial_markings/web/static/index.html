@@ -100,7 +100,7 @@
         <h2>Layers</h2>
         <label><input type="checkbox" data-layer="solid" checked><span class="sw" style="background:var(--solid)"></span>Solid</label>
         <label><input type="checkbox" data-layer="dashed" checked><span class="sw" style="background:var(--dashed)"></span>Dashed</label>
-        <label><input type="checkbox" data-layer="dash" checked><span class="sw" style="background:var(--dash)"></span>Single strokes</label>
+        <label id="dashLayer"><input type="checkbox" data-layer="dash" checked><span class="sw" style="background:var(--dash)"></span>Single strokes</label>
         <label><input type="checkbox" id="photoToggle" checked> Uploaded image</label>
         <input type="range" id="opacity" min="0" max="1" step="0.05" value="0.9" aria-label="Image opacity">
       </div>
@@ -201,7 +201,7 @@ async function show(id, job) {
   map.fitBounds(prev.bounds);
 
   const s = job.stats;
-  $('summary').innerHTML = Object.keys(COLORS).map(t => {
+  $('summary').innerHTML = Object.keys(COLORS).filter(t => t !== 'dash' || s.by_type.dash).map(t => {
     const v = s.by_type[t] || { count: 0, length_m: 0 };
     return `<tr><td><span class="sw" style="background:${COLORS[t]}"></span>${LABELS[t]}</td>` +
            `<td class="num">${v.count}</td><td class="num">${v.length_m.toLocaleString()} m</td></tr>`;
@@ -211,6 +211,7 @@ async function show(id, job) {
   const dl = [['gpkg', 'GeoPackage'], ['shp', 'Shapefile (zip)'], ['geojson', 'GeoJSON'], ['stats', 'Stats (json)']];
   $('downloads').innerHTML = dl.filter(([k]) => job.files[k])
     .map(([k, label]) => `<a class="btn" href="${url(job.files[k])}" download>${label}</a>`).join('');
+  $('dashLayer').classList.toggle('hidden', !s.by_type.dash);
   $('results').classList.remove('hidden');
 }
 

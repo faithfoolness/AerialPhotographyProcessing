@@ -16,8 +16,9 @@ from shapely.affinity import affine_transform
 
 from .config import Params
 from .mask import marking_mask
-from .merge import merge_segments
+from .merge import drop_misaligned, merge_segments
 from .raster import Ortho, read_ortho
+from .road import road_mask
 from .vectorize import extract_segments
 from .vehicles import detect_vehicles
 
@@ -62,8 +63,11 @@ def run(image: str | Path, params: Params | None = None, crs: str | None = None,
     with _stage(timings, "vehicles", progress, 0.10, "Detecting vehicles"):
         vehicle_mask, vehicle_polys = detect_vehicles(ortho.rgb, gsd, p.vehicles)
 
-    with _stage(timings, "mask", progress, 0.45, "Finding paint pixels"):
-        mask = marking_mask(ortho.rgb, ortho.valid, gsd, p.mask)
+    with _stage(timings, "road", progress, 0.40, "Finding the road surface"):
+        road = road_mask(ortho.rgb, ortho.valid, gsd, p.road) if p.road.enabled else ortho.valid
+
+    with _stage(timings, "mask", progress, 0.50, "Finding paint pixels"):
+        mask = marking_mask(ortho.rgb, road, gsd, p.mask)
         mask &= ~vehicle_mask
 
     with _stage(timings, "vectorize", progress, 0.60, "Tracing centre lines"):
@@ -84,6 +88,9 @@ def run(image: str | Path, params: Params | None = None, crs: str | None = None,
         seg_m = seg_gdf.to_crs(work_crs)
         chains = merge_segments([np.asarray(g.coords) for g in seg_m.geometry],
                                 list(seg_m["type"]), p.merge)
+        n_before = len(chains)
+        chains = drop_misaligned(chains, p.merge)
+        counters["misaligned_dropped"] = n_before - len(chains)
         widths = seg_gdf["width_m"].to_numpy()
         markings = gpd.GeoDataFrame(
             {
@@ -94,7 +101,8 @@ def run(image: str | Path, params: Params | None = None, crs: str | None = None,
             geometry=[LineString(c.coords) for c in chains], crs=work_crs,
         )
         markings["length_m"] = markings.length.round(2)
-        lone = (markings["type"] == "dash") & (markings["length_m"] < p.shape.isolated_min_length_m)
+        lone = (markings["type"] == "dash") & (
+            (markings["length_m"] < p.shape.isolated_min_length_m) | (not p.shape.keep_single_strokes))
         counters["isolated_dropped"] = int(lone.sum())
         markings = markings[~lone].reset_index(drop=True).to_crs(crs_in)
         markings.insert(0, "id", np.arange(1, len(markings) + 1))
@@ -115,7 +123,8 @@ def run(image: str | Path, params: Params | None = None, crs: str | None = None,
         "image": ortho.path.name,
         "size_px": [w, h],
         "gsd_m": round(gsd, 4),
-        "crs": crs_in.to_string(),
+        "crs": f"EPSG:{crs_in.to_epsg()}" if crs_in.to_epsg() else crs_in.name,
+        "road_area_m2": round(float(road.sum()) * gsd * gsd, 1),
         "vehicles": int(len(veh_gdf)),
         "paint_pixels": int(mask.sum()),
         "components": counters,

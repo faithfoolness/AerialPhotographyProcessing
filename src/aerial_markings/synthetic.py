@@ -51,9 +51,36 @@ def make_scene(seed: int = 0) -> tuple[np.ndarray, dict]:
         cv2.ellipse(img, (int(x), int(y)), (int(rng.integers(2, 9)), int(rng.integers(1, 4))),
                     float(rng.uniform(0, 180)), 0, 360, (v, v, v - 10), -1)
 
+    # dry, greyish grass in the lower-left half: mottled and full of pale straws,
+    # some of them as straight as a painted dash
+    yy, xx = np.mgrid[0:SIZE, 0:SIZE]
+    dry = (yy - xx) > 300
+    blotch = cv2.GaussianBlur(rng.normal(0, 1, (SIZE // 8, SIZE // 8)).astype(np.float32), (0, 0), 2)
+    blotch = cv2.resize(blotch, (SIZE, SIZE))
+    base = np.stack([118 + 18 * blotch, 116 + 14 * blotch, 96 + 10 * blotch], -1)
+    base = np.clip(base + rng.normal(0, 14, base.shape), 0, 255).astype(np.uint8)
+    img[dry] = base[dry]
+    for _ in range(5000):
+        x, y = int(rng.integers(0, SIZE)), int(rng.integers(0, SIZE))
+        if not dry[y, x]:
+            continue
+        length = _px(float(rng.uniform(0.3, 3.5)))
+        ang = rng.uniform(0, np.pi)
+        bend = rng.uniform(-0.4, 0.4) if rng.random() < 0.6 else 0.0
+        pts = []
+        for t in np.linspace(0, 1, 8):
+            a_ = ang + bend * t
+            pts.append((x + np.cos(a_) * length * t, y + np.sin(a_) * length * t))
+        v = int(rng.integers(185, 235))
+        cv2.polylines(img, [np.array(pts, np.int32)], False, (v, v, v - 8), int(rng.integers(1, 4)))
+
     truth = {"solid": 0, "dashed": 0}
     for centre, asphalt in ((-6.0, (95, 95, 98)), (6.0, (62, 60, 70))):
         a, b, d, n = _road_points(centre)
+        # gravel shoulders: light, grainy, slightly brown
+        for side in (-4.8, 4.8):
+            s0, s1, *_ = _road_points(centre + side)
+            cv2.line(img, tuple(s0.astype(int)), tuple(s1.astype(int)), (150, 142, 128), _px(1.8))
         cv2.line(img, tuple(a.astype(int)), tuple(b.astype(int)), asphalt, _px(8.0))
         for edge in (-3.5, 3.5):
             a2, b2, *_ = _road_points(centre + edge)
@@ -79,6 +106,8 @@ def make_scene(seed: int = 0) -> tuple[np.ndarray, dict]:
     cv2.fillPoly(img, [cv2.boxPoints(((float(c2[0]), float(c2[1])), (_px(1.6), _px(1.5)),
                                        float(np.degrees(ANGLE)))).astype(np.int32)], (60, 70, 80))
 
+    gravel = (np.abs(img.astype(int) - (150, 142, 128)).sum(-1) < 6)
+    img[gravel] = np.clip(img[gravel] + rng.normal(0, 22, (gravel.sum(), 1)), 0, 255).astype(np.uint8)
     img = cv2.GaussianBlur(img, (3, 3), 0.8)
     img = np.clip(img + rng.normal(0, 4, img.shape), 0, 255).astype(np.uint8)
     return img, truth

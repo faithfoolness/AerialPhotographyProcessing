@@ -115,11 +115,16 @@ def extract_segments(mask: np.ndarray, gsd_m: float, p: ShapeParams, simplify_px
                 or main_len_px / max(width_px, 1.0) < p.min_elongation):
             counters["bad_shape"] += 1
             continue
-        for k, (xy, length_px) in enumerate(paths):
+        kept_any = False
+        for xy, length_px in paths:
             coords = xy + [x - 1, y - 1] + 0.5      # crop offset, pixel centres
-            line = LineString(coords).simplify(simplify_px)
-            length_m = length_px * gsd_m
+            line = LineString(coords).simplify(simplify_px)   # also removes pixel staircase
+            length_m = line.length * gsd_m
+            chord = float(np.linalg.norm(xy[-1] - xy[0]))
+            if length_m < p.straight_check_max_m and chord / max(line.length, 1.0) < p.min_straightness:
+                continue                             # curved like a grass blade
+            kept_any = True
             kind = "solid" if length_m > p.dash_max_length_m else "dash"
             segments.append(Segment(np.asarray(line.coords), length_m, width_px * gsd_m, kind))
-        counters["kept"] += 1
+        counters["kept" if kept_any else "bad_shape"] += 1
     return segments, counters

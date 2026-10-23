@@ -10,7 +10,7 @@ from aerial_markings.export import write_outputs
 from aerial_markings.merge import chain_lines
 from aerial_markings.config import MergeParams
 from aerial_markings.raster import CRSUnknownError, read_ortho
-from aerial_markings.synthetic import GSD, ORIGIN, SIZE, make_scene, write_scene
+from aerial_markings.synthetic import ANGLE, GSD, ORIGIN, SIZE, make_scene, write_scene
 
 
 def _params():
@@ -39,7 +39,7 @@ def test_finds_all_lines(result, scene):
 
 
 def test_solid_lines_cross_the_shadow(result):
-    solid = result.markings[result.markings.type == "solid"]
+    solid = result.markings[result.markings["type"] == "solid"]
     # the diagonal of a 120 m tile is ~170 m; lines clipped by the tile are ~145 m
     assert (solid.length_m > 130).all()
 
@@ -48,8 +48,19 @@ def test_no_lines_in_forest(result):
     x0, y0 = ORIGIN
     forest = box(x0 + 1300 * GSD, y0 - 1000 * GSD, x0 + SIZE * GSD, y0)
     m = result.markings
-    stray = m[(m.type == "dash") & m.within(forest)]
+    stray = m[m.within(forest)]
     assert stray.length.sum() < 5
+
+
+def test_nothing_off_the_road(result):
+    """Dry grass full of pale straws and gravel shoulders must not produce lines."""
+    x0, y0 = ORIGIN
+    cx, cy = x0 + SIZE / 2 * GSD, y0 - SIZE / 2 * GSD
+    d = np.array([np.cos(ANGLE), -np.sin(ANGLE)])          # image y axis points down
+    n = np.array([-d[1], d[0]])
+    for geom in result.markings.geometry:
+        pts = np.asarray(geom.coords) - [cx, cy]
+        assert np.abs(pts @ n).max() < 10.5, "line found outside the carriageways"
 
 
 def test_world_file_in_degrees(tmp_path):

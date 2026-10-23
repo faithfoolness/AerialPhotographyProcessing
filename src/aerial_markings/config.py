@@ -23,12 +23,31 @@ class MaskParams:
 
 
 @dataclass
+class RoadParams:
+    # Paint is only searched for on the pavement found here.
+    enabled: bool = True
+    work_gsd_m: float = 0.25            # the mask is computed at this resolution
+    texture_window_m: float = 1.0
+    max_texture: float = 9.0            # std of brightness; asphalt is smooth, grass is not
+    max_saturation: int = 45
+    max_excess_green: int = 10          # 2G - R - B
+    min_brightness: int = 35
+    max_brightness: int = 200
+    min_road_width_m: float = 2.5
+    min_area_m2: float = 300.0
+    margin_m: float = 0.6               # edge lines lie on the border of the asphalt
+
+
+@dataclass
 class ShapeParams:
     min_length_m: float = 0.8           # shorter blobs are noise
     min_elongation: float = 3.0         # length / width
     max_width_m: float = 0.6            # wider stripes are not line markings
     dash_max_length_m: float = 7.0      # longer pieces are solid lines
-    isolated_min_length_m: float = 2.0  # a lone stroke that joins nothing must be at least this long
+    keep_single_strokes: bool = False   # strokes that are not part of a dashed line
+    isolated_min_length_m: float = 2.0  # ...and if they are kept, their minimum length
+    min_straightness: float = 0.9       # chord / path length for strokes; grass blades bend
+    straight_check_max_m: float = 30.0  # longer lines may follow a curved road
 
 
 @dataclass
@@ -45,14 +64,22 @@ class VehicleParams:
 @dataclass
 class MergeParams:
     solid_max_gap_m: float = 4.0
-    dash_max_gap_m: float = 14.0
+    dash_max_gap_m: float = 22.0        # one stroke may be hidden by a shadow or a car
     max_angle_deg: float = 12.0
-    max_lateral_offset_m: float = 0.6
+    max_lateral_offset_m: float = 0.4
+    min_dashes: int = 4                 # fewer aligned strokes are not a dashed line
+    min_dashed_length_m: float = 15.0   # nor is a shorter one (a stroke + gap cycle is 4-12 m)
+    rhythm_tolerance: float = 0.4       # strokes and gaps of a dashed line within ±40 % of the median...
+    min_steady_share: float = 0.6       # ...for at least this share of them
+    guide_min_length_m: float = 30.0    # solid lines used as the reference direction
+    guide_radius_m: float = 20.0
+    guide_check_max_m: float = 40.0     # longer dashed lines are trusted as they are
     simplify_tolerance_px: float = 1.5
 
 
 @dataclass
 class Params:
+    road: RoadParams = field(default_factory=RoadParams)
     mask: MaskParams = field(default_factory=MaskParams)
     shape: ShapeParams = field(default_factory=ShapeParams)
     vehicles: VehicleParams = field(default_factory=VehicleParams)
